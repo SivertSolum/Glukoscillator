@@ -8,17 +8,13 @@ import { getSynth } from './synthesis/synth-engine';
 import { getKeyboardHandler } from './input/keyboard-handler';
 import { getMIDIHandler, MIDIHandler } from './input/midi-handler';
 import { createPianoKeyboard, PianoKeyboard } from './ui/piano-keyboard';
-import { createDaySelector, DaySelector } from './ui/day-selector';
-import { createWaveformDisplay, WaveformDisplay } from './ui/waveform-display';
 import { createSynthControls } from './ui/controls';
 import { createOscillatorMixer, OscillatorMixer } from './ui/oscillator-mixer';
 import { createEffectsPanel } from './ui/effects-panel';
-import type { ParsedLibreViewData, DailyGlucoseData } from './types';
+import type { ParsedLibreViewData } from './types';
 
 // Global state
 let glucoseData: ParsedLibreViewData | null = null;
-let daySelector: DaySelector | null = null;
-let waveformDisplay: WaveformDisplay | null = null;
 let pianoKeyboard: PianoKeyboard | null = null;
 let oscillatorMixer: OscillatorMixer | null = null;
 let isAudioStarted = false;
@@ -30,51 +26,22 @@ async function init(): Promise<void> {
   console.log('Glukoscillator initializing...');
 
   // Set up UI components
-  setupDropZone();
+  setupFileLoader();
   setupStartButton();
   
-  daySelector = createDaySelector('day-selector');
-  waveformDisplay = createWaveformDisplay('waveform-display');
   pianoKeyboard = createPianoKeyboard('piano-keyboard');
   oscillatorMixer = createOscillatorMixer('oscillator-mixer');
   createEffectsPanel('effects-panel');
   createSynthControls('synth-controls');
 
-  // Set up day selection callback
-  daySelector.onSelect((date, dayData, oscIndex) => {
-    onDaySelected(date, dayData, oscIndex);
-  });
-
-  // Set up hover preview callback
-  daySelector.onPreview((dayData) => {
-    if (dayData) {
-      waveformDisplay?.setData(dayData);
-    }
-  });
-
   // Set up oscillator mixer callbacks
-  oscillatorMixer.onChange((_oscIndex, dayData) => {
-    // Update waveform display to show the first active oscillator
-    if (dayData) {
-      waveformDisplay?.setData(dayData);
-    }
+  oscillatorMixer.onChange((_oscIndex, _dayData) => {
+    // Waveform display is now handled by hover in oscillator mixer
   });
 
   oscillatorMixer.onRandomize(() => {
-    // Update waveform display after randomize
-    const info = getSynth().getOscillatorInfo(0);
-    if (info?.wavetable && glucoseData) {
-      const dayData = glucoseData.days.get(info.dayLabel);
-      if (dayData) {
-        waveformDisplay?.setData(dayData);
-      }
-    }
+    // Randomize complete
   });
-
-  // Listen for oscillator day selection
-  window.addEventListener('osc-day-selected', ((_e: Event) => {
-    oscillatorMixer?.clearSelectionMode();
-  }) as EventListener);
 
   // Set up keyboard handler callbacks for visual feedback
   const keyboardHandler = getKeyboardHandler();
@@ -122,16 +89,16 @@ async function loadSampleData(): Promise<void> {
     generateAllWavetables(glucoseData.days);
 
     // Update UI
-    daySelector?.setData(glucoseData);
     oscillatorMixer?.setData(glucoseData);
     
-    // Update drop zone to show loaded state
-    const dropZone = document.getElementById('drop-zone');
-    dropZone?.classList.add('loaded');
+    // Update file loader to show loaded state
+    const fileLoaderBtn = document.getElementById('file-loader-btn');
+    const fileLabel = document.getElementById('file-label');
     
-    const fileNameEl = dropZone?.querySelector('.file-name');
-    if (fileNameEl) {
-      fileNameEl.textContent = `Sample Data (${glucoseData.days.size} days)`;
+    fileLoaderBtn?.classList.add('loaded');
+    
+    if (fileLabel) {
+      fileLabel.textContent = `${glucoseData.days.size} days`;
     }
 
     // Auto-assign first day to oscillator 1
@@ -147,16 +114,19 @@ async function loadSampleData(): Promise<void> {
 }
 
 /**
- * Set up the file drop zone
+ * Set up the file loader button in header
  */
-function setupDropZone(): void {
-  const dropZone = document.getElementById('drop-zone');
+function setupFileLoader(): void {
+  const fileLoaderBtn = document.getElementById('file-loader-btn');
   const fileInput = document.getElementById('file-input') as HTMLInputElement;
 
-  if (!dropZone || !fileInput) return;
+  if (!fileLoaderBtn || !fileInput) return;
 
-  // Click to browse
-  dropZone.addEventListener('click', () => fileInput.click());
+  // Click button to open file dialog
+  fileLoaderBtn.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('input')) return;
+    fileInput.click();
+  });
 
   // File input change
   fileInput.addEventListener('change', (e) => {
@@ -166,32 +136,39 @@ function setupDropZone(): void {
     }
   });
 
-  // Drag and drop
-  dropZone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropZone.classList.add('drag-over');
-  });
+  // Also allow drag & drop on the whole app
+  const appContainer = document.querySelector('.app-container');
+  if (appContainer) {
+    appContainer.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      fileLoaderBtn.classList.add('drag-over');
+    });
 
-  dropZone.addEventListener('dragleave', () => {
-    dropZone.classList.remove('drag-over');
-  });
+    appContainer.addEventListener('dragleave', (e) => {
+      // Only remove if leaving the container entirely
+      if (!appContainer.contains(e.relatedTarget as Node)) {
+        fileLoaderBtn.classList.remove('drag-over');
+      }
+    });
 
-  dropZone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropZone.classList.remove('drag-over');
-    
-    const files = e.dataTransfer?.files;
-    if (files && files[0]) {
-      handleFile(files[0]);
-    }
-  });
+    appContainer.addEventListener('drop', (e) => {
+      e.preventDefault();
+      fileLoaderBtn.classList.remove('drag-over');
+      
+      const files = (e as DragEvent).dataTransfer?.files;
+      if (files && files[0]) {
+        handleFile(files[0]);
+      }
+    });
+  }
 }
 
 /**
  * Handle uploaded file
  */
 async function handleFile(file: File): Promise<void> {
-  const dropZone = document.getElementById('drop-zone');
+  const fileLoaderBtn = document.getElementById('file-loader-btn');
+  const fileLabel = document.getElementById('file-label');
   
   if (!file.name.endsWith('.csv')) {
     showError('Please upload a CSV file from LibreView');
@@ -199,7 +176,7 @@ async function handleFile(file: File): Promise<void> {
   }
 
   try {
-    dropZone?.classList.add('loading');
+    fileLoaderBtn?.classList.add('loading');
     
     const text = await file.text();
     glucoseData = parseLibreViewCSV(text);
@@ -213,15 +190,13 @@ async function handleFile(file: File): Promise<void> {
     generateAllWavetables(glucoseData.days);
 
     // Update UI
-    daySelector?.setData(glucoseData);
     oscillatorMixer?.setData(glucoseData);
     
-    dropZone?.classList.remove('loading');
-    dropZone?.classList.add('loaded');
+    fileLoaderBtn?.classList.remove('loading');
+    fileLoaderBtn?.classList.add('loaded');
     
-    const fileNameEl = dropZone?.querySelector('.file-name');
-    if (fileNameEl) {
-      fileNameEl.textContent = `${file.name} (${glucoseData.days.size} days)`;
+    if (fileLabel) {
+      fileLabel.textContent = `${glucoseData.days.size} days`;
     }
 
     // Auto-assign first day to oscillator 1
@@ -234,25 +209,7 @@ async function handleFile(file: File): Promise<void> {
   } catch (error) {
     console.error('Error parsing file:', error);
     showError('Error parsing file. Make sure it\'s a valid LibreView export.');
-    dropZone?.classList.remove('loading');
-  }
-}
-
-/**
- * Handle day selection
- */
-function onDaySelected(date: string, dayData: DailyGlucoseData, oscIndex: number | null): void {
-  console.log(`Selected day: ${date}${oscIndex !== null ? ` for OSC ${oscIndex + 1}` : ''}`);
-  
-  // Update waveform display
-  waveformDisplay?.setData(dayData);
-  
-  // If selecting for a specific oscillator, assign it there
-  if (oscIndex !== null) {
-    oscillatorMixer?.setOscillatorDay(oscIndex, date);
-  } else {
-    // Default behavior: assign to first oscillator
-    oscillatorMixer?.setOscillatorDay(0, date);
+    fileLoaderBtn?.classList.remove('loading');
   }
 }
 

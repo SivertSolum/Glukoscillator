@@ -4,9 +4,6 @@
 @import './styles/variables.css';
 @import './styles/base.css';
 @import './styles/layout.css';
-@import './styles/day-selector.css';
-@import './styles/drop-zone.css';
-@import './styles/waveform.css';
 @import './styles/oscillator-mixer.css';
 @import './styles/knobs.css';
 @import './styles/effects-rack.css';

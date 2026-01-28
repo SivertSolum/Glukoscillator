@@ -8,7 +8,7 @@
   background: linear-gradient(180deg, var(--metal-mid) 0%, var(--metal-dark) 100%);
   border-radius: var(--radius-lg);
   border: 2px solid var(--metal-dark);
-  padding: var(--spacing-lg);
+  padding: var(--spacing-sm) var(--spacing-md);
   box-shadow: 
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 4px 20px rgba(0, 0, 0, 0.3);
@@ -22,14 +22,14 @@
 .controls-section {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md);
+  gap: var(--spacing-xs);
 }
 
 .section-label {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  margin-bottom: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
 }
 
 .label-text {
@@ -52,12 +52,12 @@
 
 .adsr-controls {
   display: flex;
-  gap: var(--spacing-lg);
+  gap: var(--spacing-md);
   justify-content: center;
 }
 
 .volume-section {
-  padding-left: var(--spacing-lg);
+  padding-left: var(--spacing-md);
   border-left: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -68,23 +68,23 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--spacing-sm);
-  min-width: 70px;
+  gap: 2px;
+  min-width: 50px;
 }
 
 .knob-wrapper.knob-large .knob-container {
-  width: 80px;
-  height: 80px;
+  width: 56px;
+  height: 56px;
 }
 
 .knob-wrapper.knob-large .knob {
-  width: 52px;
-  height: 52px;
+  width: 38px;
+  height: 38px;
 }
 
 .knob-label {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.6rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -93,8 +93,8 @@
 
 .knob-container {
   position: relative;
-  width: 56px;
-  height: 56px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -121,15 +121,15 @@
 
 .knob {
   position: relative;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   background: linear-gradient(145deg, var(--metal-highlight) 0%, var(--metal-dark) 100%);
   border-radius: 50%;
   cursor: pointer;
   box-shadow: 
-    0 4px 12px rgba(0, 0, 0, 0.5),
-    inset 0 2px 4px rgba(255, 255, 255, 0.1),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.3);
+    0 3px 8px rgba(0, 0, 0, 0.5),
+    inset 0 1px 3px rgba(255, 255, 255, 0.1),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.3);
   transition: box-shadow 0.15s ease;
 }
 
@@ -142,21 +142,21 @@
 
 .knob-pointer {
   position: absolute;
-  top: 4px;
+  top: 3px;
   left: 50%;
-  width: 3px;
-  height: 10px;
-  margin-left: -1.5px;
+  width: 2px;
+  height: 8px;
+  margin-left: -1px;
   background: var(--accent-primary);
   border-radius: 2px;
-  box-shadow: 0 0 6px var(--glow-color);
+  box-shadow: 0 0 4px var(--glow-color);
 }
 
 .knob-wrapper.knob-large .knob-pointer {
-  top: 6px;
-  height: 14px;
-  width: 4px;
-  margin-left: -2px;
+  top: 4px;
+  height: 10px;
+  width: 3px;
+  margin-left: -1.5px;
 }
 
 .knob.active {
@@ -168,12 +168,12 @@
 
 .knob-value {
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.55rem;
   color: var(--accent-primary);
-  padding: 2px 8px;
+  padding: 1px 6px;
   background: rgba(0, 0, 0, 0.4);
   border-radius: var(--radius-sm);
-  min-width: 50px;
+  min-width: 40px;
   text-align: center;
 }
 

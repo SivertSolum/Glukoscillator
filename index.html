@@ -19,7 +19,13 @@
           </div>
           <span class="logo-text">Glukoscillator</span>
         </div>
-        <div class="header-status">
+        <div class="header-controls">
+          <!-- Compact File Loader Button -->
+          <button id="file-loader-btn" class="file-loader-btn" title="Load LibreView CSV">
+            <span class="file-icon">💾</span>
+            <span class="file-label" id="file-label">Load Data</span>
+            <input type="file" id="file-input" accept=".csv" />
+          </button>
           <span id="midi-status">MIDI: Not connected</span>
         </div>
       </header>
@@ -28,22 +34,6 @@
       <main class="main-content">
         <!-- Center Panel (full width) -->
         <div class="center-panel">
-          <!-- Drop Zone - Cartridge Slot -->
-          <div id="drop-zone" class="drop-zone">
-            <div class="drop-zone-icon">💾</div>
-            <div class="drop-zone-text">Insert LibreView Data</div>
-            <div class="file-name"></div>
-            <input type="file" id="file-input" accept=".csv" />
-          </div>
-
-          <!-- Day Selector Dropdown -->
-          <div id="day-selector" class="day-selector-dropdown">
-            <div class="dropdown-placeholder">Drop a CSV file to begin</div>
-          </div>
-
-          <!-- Waveform Display -->
-          <div id="waveform-display"></div>
-
           <!-- Oscillator Mixer -->
           <div id="oscillator-mixer"></div>
 

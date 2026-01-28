@@ -428,20 +428,6 @@ Contributions are welcome! Areas of interest:
 
 ---
 
-## 📄 License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-
-## 🙏 Acknowledgments
-
-- [Tone.js](https://tonejs.github.io/) for the excellent Web Audio framework
-- The diabetes community for inspiration
-- Abbott for the LibreView platform
-
----
-
 <p align="center">
   <strong>Turn your data into art. 🩸→🎵</strong>
 </p>
