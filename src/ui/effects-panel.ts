@@ -20,16 +20,28 @@ import {
   type DelayParams,
   type ReverbParams,
   type StereoWidenerParams,
+  EffectsChain,
 } from '../synthesis/effects-chain';
 import { EFFECT_ICONS, EFFECT_COLORS } from './effects-icons';
 
 export class EffectsPanel {
   private container: HTMLElement;
   private effectsContainer: HTMLElement | null = null;
+  private dropIndicator: HTMLElement | null = null;
+  private addDropdown: HTMLElement | null = null;
+  private isDropdownOpen: boolean = false;
   private draggedEffect: EffectId | null = null;
+  private dropTargetIndex: number = -1;
   private activeKnob: HTMLElement | null = null;
   private startY: number = 0;
   private startValue: number = 0;
+  
+  // Throttling state for knob updates
+  private pendingKnobUpdate: { effectId: EffectId; param: string; value: number } | null = null;
+  private knobUpdateScheduled: boolean = false;
+  
+  // Cached references for performance
+  private effectsChain: EffectsChain;
 
   constructor(containerId: string) {
     const container = document.getElementById(containerId);
@@ -38,19 +50,34 @@ export class EffectsPanel {
     }
     this.container = container;
     
+    // Cache effects chain reference
+    this.effectsChain = getSynth().getEffectsChain();
+    
     this.handleMouseMove = this.handleMouseMove.bind(this);
     this.handleMouseUp = this.handleMouseUp.bind(this);
     document.addEventListener('mousemove', this.handleMouseMove);
     document.addEventListener('mouseup', this.handleMouseUp);
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (this.addDropdown && !this.addDropdown.contains(e.target as Node) && this.isDropdownOpen) {
+        this.closeDropdown();
+      }
+    });
     
     this.render();
     this.setupEffectsCallbacks();
   }
 
   private setupEffectsCallbacks(): void {
-    const effectsChain = getSynth().getEffectsChain();
-    effectsChain.onChange((effectId) => this.updateEffectModule(effectId));
-    effectsChain.onOrderChange(() => this.renderEffectModules());
+    this.effectsChain.onChange((effectId) => {
+      this.updateEffectModule(effectId);
+      this.updateDropdownList();
+    });
+    this.effectsChain.onOrderChange(() => {
+      this.renderEffectModules();
+      this.updateDropdownList();
+    });
   }
 
   render(): void {
@@ -68,36 +95,299 @@ export class EffectsPanel {
       <div class="rack-screws right"><div class="screw"></div><div class="screw"></div></div>
     `;
     this.container.appendChild(header);
-    header.querySelector('.rack-reset-btn')?.addEventListener('click', () => getSynth().getEffectsChain().reset());
+    header.querySelector('.rack-reset-btn')?.addEventListener('click', () => {
+      this.effectsChain.reset();
+      this.renderEffectModules();
+      this.updateDropdownList();
+    });
 
     this.effectsContainer = document.createElement('div');
     this.effectsContainer.className = 'effects-pedalboard';
     this.container.appendChild(this.effectsContainer);
+    
+    // Create drop indicator
+    this.dropIndicator = document.createElement('div');
+    this.dropIndicator.className = 'drop-indicator';
+    this.effectsContainer.appendChild(this.dropIndicator);
+    
+    // Set up container-level drag handlers
+    this.setupContainerDragHandlers();
+    
+    // Create the add-effect dropdown
+    this.addDropdown = this.createAddEffectDropdown();
+    this.container.appendChild(this.addDropdown);
+    
     this.renderEffectModules();
+  }
+
+  private setupContainerDragHandlers(): void {
+    if (!this.effectsContainer) return;
+    
+    this.effectsContainer.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (!this.draggedEffect) return;
+      
+      this.updateDropIndicator(e.clientX);
+    });
+    
+    this.effectsContainer.addEventListener('dragleave', (e) => {
+      // Only hide if leaving the container entirely
+      const rect = this.effectsContainer!.getBoundingClientRect();
+      if (e.clientX < rect.left || e.clientX > rect.right || 
+          e.clientY < rect.top || e.clientY > rect.bottom) {
+        this.hideDropIndicator();
+      }
+    });
+    
+    this.effectsContainer.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (!this.draggedEffect || this.dropTargetIndex < 0) return;
+      
+      this.performDrop();
+    });
+  }
+
+  private updateDropIndicator(clientX: number): void {
+    if (!this.effectsContainer || !this.dropIndicator || !this.draggedEffect) return;
+    
+    const modules = Array.from(this.effectsContainer.querySelectorAll('.effect-module:not(.dragging)')) as HTMLElement[];
+    if (modules.length === 0) {
+      this.hideDropIndicator();
+      return;
+    }
+    
+    // Find the position to insert
+    let insertIndex = modules.length;
+    let indicatorX = 0;
+    
+    for (let i = 0; i < modules.length; i++) {
+      const rect = modules[i].getBoundingClientRect();
+      const midpoint = rect.left + rect.width / 2;
+      
+      if (clientX < midpoint) {
+        insertIndex = i;
+        indicatorX = rect.left - 8;
+        break;
+      }
+      
+      // If we're past the last module
+      if (i === modules.length - 1) {
+        indicatorX = rect.right + 8;
+      }
+    }
+    
+    // Don't show indicator if dropping in same position
+    const enabledEffects = this.effectsChain.getEnabledEffects();
+    const draggedIndex = enabledEffects.indexOf(this.draggedEffect);
+    if (insertIndex === draggedIndex || insertIndex === draggedIndex + 1) {
+      this.hideDropIndicator();
+      this.dropTargetIndex = -1;
+      return;
+    }
+    
+    this.dropTargetIndex = insertIndex;
+    
+    // Position the indicator
+    const containerRect = this.effectsContainer.getBoundingClientRect();
+    this.dropIndicator.style.left = `${indicatorX - containerRect.left}px`;
+    this.dropIndicator.classList.add('visible');
+  }
+
+  private hideDropIndicator(): void {
+    this.dropIndicator?.classList.remove('visible');
+  }
+
+  private performDrop(): void {
+    if (!this.draggedEffect || this.dropTargetIndex < 0) return;
+    
+    const enabledEffects = this.effectsChain.getEnabledEffects();
+    const currentOrder = this.effectsChain.getOrder();
+    const draggedIndex = enabledEffects.indexOf(this.draggedEffect);
+    
+    // Calculate the target effect to insert before/after
+    let targetIndex = this.dropTargetIndex;
+    if (draggedIndex < targetIndex) {
+      targetIndex--; // Adjust for removal
+    }
+    
+    // Build new order
+    const newOrder = currentOrder.filter(id => id !== this.draggedEffect);
+    
+    // Find where to insert in the full order based on enabled effects position
+    if (targetIndex >= enabledEffects.length - 1) {
+      // Insert at end of enabled effects
+      const lastEnabled = enabledEffects[enabledEffects.length - 1];
+      if (lastEnabled && lastEnabled !== this.draggedEffect) {
+        const lastEnabledOrderIndex = newOrder.indexOf(lastEnabled);
+        newOrder.splice(lastEnabledOrderIndex + 1, 0, this.draggedEffect);
+      } else {
+        newOrder.push(this.draggedEffect);
+      }
+    } else {
+      // Insert before the target
+      const targetEffect = enabledEffects.filter(id => id !== this.draggedEffect)[targetIndex];
+      if (targetEffect) {
+        const targetOrderIndex = newOrder.indexOf(targetEffect);
+        newOrder.splice(targetOrderIndex, 0, this.draggedEffect);
+      }
+    }
+    
+    this.effectsChain.reorder(newOrder);
+    this.hideDropIndicator();
+    this.dropTargetIndex = -1;
+  }
+
+  private createAddEffectDropdown(): HTMLElement {
+    const dropdown = document.createElement('div');
+    dropdown.className = 'add-effect-dropdown';
+    
+    dropdown.innerHTML = `
+      <div class="add-effect-header">
+        <span class="add-effect-label">+ Add Effect</span>
+        <div class="dropdown-arrow">
+          <svg viewBox="0 0 24 24">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+      </div>
+      <div class="add-effect-panel">
+        <div class="add-effect-list"></div>
+      </div>
+    `;
+    
+    const header = dropdown.querySelector('.add-effect-header');
+    header?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleDropdown();
+    });
+    
+    this.updateDropdownList(dropdown);
+    
+    return dropdown;
+  }
+
+  private updateDropdownList(dropdown?: HTMLElement): void {
+    const container = dropdown || this.addDropdown;
+    if (!container) return;
+    
+    const list = container.querySelector('.add-effect-list');
+    if (!list) return;
+    
+    list.innerHTML = '';
+    
+    const disabledEffects = this.effectsChain.getDisabledEffects();
+    
+    if (disabledEffects.length === 0) {
+      list.innerHTML = '<div class="no-effects-available">All effects active</div>';
+      return;
+    }
+    
+    for (const effectId of disabledEffects) {
+      const item = document.createElement('div');
+      item.className = 'add-effect-item';
+      item.dataset.effect = effectId;
+      
+      const accentColor = EFFECT_COLORS[effectId];
+      item.innerHTML = `
+        <div class="effect-item-icon" style="color: ${accentColor}">${EFFECT_ICONS[effectId]}</div>
+        <span class="effect-item-name">${getEffectDisplayName(effectId)}</span>
+      `;
+      
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.addEffect(effectId);
+        this.closeDropdown();
+      });
+      
+      list.appendChild(item);
+    }
+  }
+
+  private toggleDropdown(): void {
+    if (this.isDropdownOpen) {
+      this.closeDropdown();
+    } else {
+      this.openDropdown();
+    }
+  }
+
+  private openDropdown(): void {
+    this.isDropdownOpen = true;
+    this.addDropdown?.classList.add('open');
+    this.updateDropdownList();
+    
+    // Position the panel above the header using fixed positioning
+    const header = this.addDropdown?.querySelector('.add-effect-header') as HTMLElement;
+    const panel = this.addDropdown?.querySelector('.add-effect-panel') as HTMLElement;
+    if (header && panel) {
+      const rect = header.getBoundingClientRect();
+      panel.style.position = 'fixed';
+      panel.style.bottom = `${window.innerHeight - rect.top}px`;
+      panel.style.left = `${rect.left}px`;
+      panel.style.width = `${rect.width}px`;
+    }
+  }
+
+  private closeDropdown(): void {
+    this.isDropdownOpen = false;
+    this.addDropdown?.classList.remove('open');
+    
+    // Reset panel positioning
+    const panel = this.addDropdown?.querySelector('.add-effect-panel') as HTMLElement;
+    if (panel) {
+      panel.style.position = '';
+      panel.style.bottom = '';
+      panel.style.left = '';
+      panel.style.width = '';
+    }
+  }
+
+  private addEffect(effectId: EffectId): void {
+    this.setEffectEnabled(effectId, true);
+    this.renderEffectModules();
+    this.updateDropdownList();
+  }
+
+  private removeEffect(effectId: EffectId): void {
+    this.setEffectEnabled(effectId, false);
+    this.renderEffectModules();
+    this.updateDropdownList();
   }
 
   private renderEffectModules(): void {
     if (!this.effectsContainer) return;
     this.effectsContainer.innerHTML = '';
-    for (const effectId of getSynth().getEffectsChain().getOrder()) {
-      this.effectsContainer.appendChild(this.createEffectModule(effectId));
+    
+    // Only render enabled effects
+    const enabledEffects = this.effectsChain.getEnabledEffects();
+    
+    if (enabledEffects.length === 0) {
+      this.effectsContainer.innerHTML = '<div class="no-effects-message">No effects active. Add effects using the dropdown below.</div>';
+    } else {
+      for (const effectId of enabledEffects) {
+        this.effectsContainer.appendChild(this.createEffectModule(effectId));
+      }
+    }
+    
+    // Re-add drop indicator (it gets removed when innerHTML is cleared)
+    if (this.dropIndicator) {
+      this.effectsContainer.appendChild(this.dropIndicator);
     }
   }
 
   private createEffectModule(effectId: EffectId): HTMLElement {
-    const effectsChain = getSynth().getEffectsChain();
-    const params = effectsChain.getEffectParams(effectId);
-    const isEnabled = effectsChain.isEnabled(effectId);
+    const params = this.effectsChain.getEffectParams(effectId);
     const accentColor = EFFECT_COLORS[effectId];
 
     const module = document.createElement('div');
-    module.className = `effect-module ${isEnabled ? 'enabled' : 'disabled'}`;
+    module.className = 'effect-module enabled';
     module.id = `effect-module-${effectId}`;
     module.draggable = true;
     module.dataset.effect = effectId;
 
     module.innerHTML = `
       <div class="module-faceplate" style="--accent-color: ${accentColor}">
+        <button class="module-remove-btn" title="Remove effect">×</button>
         <div class="module-screws top"><div class="screw small"></div><div class="screw small"></div></div>
         <div class="module-header">
           <div class="module-icon">${EFFECT_ICONS[effectId]}</div>
@@ -105,16 +395,16 @@ export class EffectsPanel {
         </div>
         <div class="module-knobs">${this.getEffectKnobsHTML(effectId, params)}</div>
         <div class="module-footer">
-          <button class="footswitch ${isEnabled ? 'on' : ''}" data-effect="${effectId}">
-            <div class="footswitch-led"></div>
-          </button>
           <div class="module-label">${effectId.toUpperCase()}</div>
         </div>
         <div class="module-screws bottom"><div class="screw small"></div><div class="screw small"></div></div>
       </div>
     `;
 
-    module.querySelector('.footswitch')?.addEventListener('click', () => this.setEffectEnabled(effectId, !isEnabled));
+    module.querySelector('.module-remove-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.removeEffect(effectId);
+    });
     this.setupKnobHandlers(module, effectId);
     this.setupDragHandlers(module, effectId);
     return module;
@@ -172,11 +462,28 @@ export class EffectsPanel {
     const effectId = (knob as any)._effectId as EffectId;
 
     const deltaY = this.startY - e.clientY;
-    let newValue = Math.max(min, Math.min(max, this.startValue + deltaY * 0.5));
+    const newValue = Math.max(min, Math.min(max, this.startValue + deltaY * 0.5));
     
+    // Update visual immediately (CSS transform is cheap)
     knob.dataset.value = String(newValue);
     knob.style.transform = `rotate(${-135 + ((newValue - min) / (max - min)) * 270}deg)`;
-    this.updateEffectParameter(effectId, param, newValue);
+    
+    // Throttle audio parameter updates using requestAnimationFrame
+    this.pendingKnobUpdate = { effectId, param, value: newValue };
+    if (!this.knobUpdateScheduled) {
+      this.knobUpdateScheduled = true;
+      requestAnimationFrame(() => {
+        if (this.pendingKnobUpdate) {
+          this.updateEffectParameter(
+            this.pendingKnobUpdate.effectId,
+            this.pendingKnobUpdate.param,
+            this.pendingKnobUpdate.value
+          );
+          this.pendingKnobUpdate = null;
+        }
+        this.knobUpdateScheduled = false;
+      });
+    }
   }
 
   private handleMouseUp(): void {
@@ -184,10 +491,12 @@ export class EffectsPanel {
       this.activeKnob.classList.remove('active');
       this.activeKnob = null;
     }
+    // Clear any pending updates
+    this.pendingKnobUpdate = null;
   }
 
   private updateEffectParameter(effectId: EffectId, param: string, rawValue: number): void {
-    const fx = getSynth().getEffectsChain();
+    const fx = this.effectsChain;
     switch (effectId) {
       case 'compressor': if (param === 'threshold') fx.setCompressor({ threshold: (rawValue * 60 / 100) - 60 }); else if (param === 'ratio') fx.setCompressor({ ratio: rawValue / 5 }); break;
       case 'eq3': if (param === 'low') fx.setEQ3({ low: rawValue - 50 }); else if (param === 'mid') fx.setEQ3({ mid: rawValue - 50 }); else if (param === 'high') fx.setEQ3({ high: rawValue - 50 }); break;
@@ -208,43 +517,26 @@ export class EffectsPanel {
   }
 
   private setupDragHandlers(module: HTMLElement, effectId: EffectId): void {
+    // Add will-change hint for smoother dragging
+    module.style.willChange = 'transform';
+    
     module.addEventListener('dragstart', (e) => {
       this.draggedEffect = effectId;
       module.classList.add('dragging');
       e.dataTransfer?.setData('text/plain', effectId);
       if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
     });
+    
     module.addEventListener('dragend', () => {
       this.draggedEffect = null;
       module.classList.remove('dragging');
-      document.querySelectorAll('.effect-module').forEach(m => m.classList.remove('drag-over-left', 'drag-over-right'));
-    });
-    module.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      if (this.draggedEffect === effectId) return;
-      const rect = module.getBoundingClientRect();
-      module.classList.remove('drag-over-left', 'drag-over-right');
-      module.classList.add(e.clientX < rect.left + rect.width / 2 ? 'drag-over-left' : 'drag-over-right');
-    });
-    module.addEventListener('dragleave', () => module.classList.remove('drag-over-left', 'drag-over-right'));
-    module.addEventListener('drop', (e) => {
-      e.preventDefault();
-      if (!this.draggedEffect || this.draggedEffect === effectId) return;
-      const effectsChain = getSynth().getEffectsChain();
-      const currentOrder = effectsChain.getOrder();
-      const rect = module.getBoundingClientRect();
-      const dropBefore = e.clientX < rect.left + rect.width / 2;
-      const newOrder = currentOrder.filter(id => id !== this.draggedEffect);
-      let insertIndex = newOrder.indexOf(effectId);
-      if (!dropBefore) insertIndex++;
-      newOrder.splice(insertIndex, 0, this.draggedEffect);
-      effectsChain.reorder(newOrder);
-      module.classList.remove('drag-over-left', 'drag-over-right');
+      this.hideDropIndicator();
+      this.dropTargetIndex = -1;
     });
   }
 
   private setEffectEnabled(effectId: EffectId, enabled: boolean): void {
-    const fx = getSynth().getEffectsChain();
+    const fx = this.effectsChain;
     switch (effectId) {
       case 'compressor': fx.setCompressor({ enabled }); break;
       case 'eq3': fx.setEQ3({ enabled }); break;
@@ -267,13 +559,20 @@ export class EffectsPanel {
 
   private updateEffectModule(effectId: EffectId): void {
     const module = document.getElementById(`effect-module-${effectId}`);
+    const isEnabled = this.effectsChain.isEnabled(effectId);
+    
+    // If enabled state changed, re-render all modules
+    if (isEnabled && !module) {
+      this.renderEffectModules();
+      return;
+    }
+    if (!isEnabled && module) {
+      this.renderEffectModules();
+      return;
+    }
+    
     if (!module) return;
-    const effectsChain = getSynth().getEffectsChain();
-    const isEnabled = effectsChain.isEnabled(effectId);
-    module.classList.toggle('enabled', isEnabled);
-    module.classList.toggle('disabled', !isEnabled);
-    module.querySelector('.footswitch')?.classList.toggle('on', isEnabled);
-    this.updateKnobValues(module, effectId, effectsChain.getEffectParams(effectId));
+    this.updateKnobValues(module, effectId, this.effectsChain.getEffectParams(effectId));
   }
 
   private updateKnobValues(module: HTMLElement, effectId: EffectId, params: any): void {

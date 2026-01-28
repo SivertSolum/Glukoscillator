@@ -7,6 +7,112 @@ import { GLUCOSE_RANGE } from '../types';
 // Standard wavetable size (power of 2 for FFT efficiency)
 export const WAVETABLE_SIZE = 2048;
 
+// Pre-computed twiddle factors for FFT (cached for performance)
+let twiddleFactorsReal: Float32Array | null = null;
+let twiddleFactorsImag: Float32Array | null = null;
+let twiddleSize = 0;
+
+/**
+ * Initialize twiddle factors for FFT
+ * These are pre-computed complex exponentials used in the FFT algorithm
+ */
+function initTwiddleFactors(size: number): void {
+  if (twiddleSize === size && twiddleFactorsReal && twiddleFactorsImag) return;
+  
+  twiddleSize = size;
+  twiddleFactorsReal = new Float32Array(size / 2);
+  twiddleFactorsImag = new Float32Array(size / 2);
+  
+  for (let i = 0; i < size / 2; i++) {
+    const angle = (-2 * Math.PI * i) / size;
+    twiddleFactorsReal[i] = Math.cos(angle);
+    twiddleFactorsImag[i] = Math.sin(angle);
+  }
+}
+
+/**
+ * Bit-reversal permutation for in-place FFT
+ */
+function bitReverse(arr: Float32Array, n: number): void {
+  const bits = Math.log2(n);
+  for (let i = 0; i < n; i++) {
+    let reversed = 0;
+    let num = i;
+    for (let j = 0; j < bits; j++) {
+      reversed = (reversed << 1) | (num & 1);
+      num >>= 1;
+    }
+    if (reversed > i) {
+      const temp = arr[i];
+      arr[i] = arr[reversed];
+      arr[reversed] = temp;
+    }
+  }
+}
+
+/**
+ * Cooley-Tukey FFT algorithm - O(n log n) complexity
+ * Returns magnitude spectrum for the first numPartials harmonics
+ */
+function fft(input: Float32Array, numPartials: number): number[] {
+  const N = input.length;
+  
+  // Ensure N is a power of 2
+  if ((N & (N - 1)) !== 0) {
+    throw new Error('FFT size must be a power of 2');
+  }
+  
+  initTwiddleFactors(N);
+  
+  // Create working arrays for real and imaginary parts
+  const real = new Float32Array(input);
+  const imag = new Float32Array(N);
+  
+  // Bit-reversal permutation
+  bitReverse(real, N);
+  bitReverse(imag, N);
+  
+  // Cooley-Tukey iterative FFT
+  for (let size = 2; size <= N; size *= 2) {
+    const halfSize = size / 2;
+    const step = N / size;
+    
+    for (let i = 0; i < N; i += size) {
+      for (let j = 0; j < halfSize; j++) {
+        const twiddleIdx = j * step;
+        const tReal = twiddleFactorsReal![twiddleIdx];
+        const tImag = twiddleFactorsImag![twiddleIdx];
+        
+        const idx1 = i + j;
+        const idx2 = i + j + halfSize;
+        
+        // Complex multiplication: (a + bi) * (c + di) = (ac - bd) + (ad + bc)i
+        const tempReal = real[idx2] * tReal - imag[idx2] * tImag;
+        const tempImag = real[idx2] * tImag + imag[idx2] * tReal;
+        
+        // Butterfly operation
+        real[idx2] = real[idx1] - tempReal;
+        imag[idx2] = imag[idx1] - tempImag;
+        real[idx1] = real[idx1] + tempReal;
+        imag[idx1] = imag[idx1] + tempImag;
+      }
+    }
+  }
+  
+  // Extract magnitudes for the requested number of partials
+  const partials: number[] = [];
+  const normFactor = 2 / N;
+  
+  for (let k = 1; k <= numPartials; k++) {
+    const magnitude = Math.sqrt(real[k] * real[k] + imag[k] * imag[k]) * normFactor;
+    partials.push(magnitude);
+  }
+  
+  // Normalize so fundamental is 1
+  const fundamental = partials[0] || 1;
+  return partials.map(p => p / fundamental);
+}
+
 /**
  * Generate a wavetable from a day's glucose readings
  * The glucose curve becomes a single-cycle waveform
@@ -113,17 +219,26 @@ function resampleToWavetableSize(values: Float32Array, targetSize: number): Floa
   return result;
 }
 
+// Reusable buffer for smoothing operations (avoids allocation in hot path)
+let smoothingBuffer: Float32Array | null = null;
+
 /**
  * Apply gentle smoothing to reduce harsh high frequencies
+ * Uses a reusable buffer to avoid allocations
  */
 function smoothWavetable(wavetable: Float32Array, passes: number = 2): void {
-  const temp = new Float32Array(wavetable.length);
+  // Reuse or create buffer
+  if (!smoothingBuffer || smoothingBuffer.length !== wavetable.length) {
+    smoothingBuffer = new Float32Array(wavetable.length);
+  }
+  const temp = smoothingBuffer;
+  const len = wavetable.length;
   
   for (let pass = 0; pass < passes; pass++) {
-    for (let i = 0; i < wavetable.length; i++) {
-      const prev = wavetable[(i - 1 + wavetable.length) % wavetable.length];
+    for (let i = 0; i < len; i++) {
+      const prev = wavetable[(i - 1 + len) % len];
       const curr = wavetable[i];
-      const next = wavetable[(i + 1) % wavetable.length];
+      const next = wavetable[(i + 1) % len];
       
       // 3-point moving average with emphasis on current
       temp[i] = prev * 0.25 + curr * 0.5 + next * 0.25;
@@ -136,31 +251,11 @@ function smoothWavetable(wavetable: Float32Array, passes: number = 2): void {
 
 /**
  * Compute FFT partials from wavetable for Tone.js
+ * Uses optimized Cooley-Tukey FFT algorithm - O(n log n) instead of O(n²)
  * Tone.js uses Fourier coefficients for custom oscillators
  */
 export function computePartialsFromWavetable(wavetable: Float32Array, numPartials: number = 64): number[] {
-  const N = wavetable.length;
-  const partials: number[] = [];
-  
-  // Compute real Fourier coefficients (cosine terms)
-  for (let k = 1; k <= numPartials; k++) {
-    let real = 0;
-    let imag = 0;
-    
-    for (let n = 0; n < N; n++) {
-      const angle = (2 * Math.PI * k * n) / N;
-      real += wavetable[n] * Math.cos(angle);
-      imag += wavetable[n] * Math.sin(angle);
-    }
-    
-    // Magnitude of this harmonic
-    const magnitude = Math.sqrt(real * real + imag * imag) / (N / 2);
-    partials.push(magnitude);
-  }
-  
-  // Normalize so fundamental is 1
-  const fundamental = partials[0] || 1;
-  return partials.map(p => p / fundamental);
+  return fft(wavetable, numPartials);
 }
 
 /**

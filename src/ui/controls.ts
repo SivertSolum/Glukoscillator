@@ -3,7 +3,7 @@
 
 import type { ADSREnvelope } from '../types';
 import { DEFAULT_ENVELOPE } from '../types';
-import { getSynth } from '../synthesis/synth-engine';
+import { getSynth, GlucoseSynth } from '../synthesis/synth-engine';
 
 export class SynthControls {
   private container: HTMLElement;
@@ -12,6 +12,13 @@ export class SynthControls {
   private activeKnob: HTMLElement | null = null;
   private startY: number = 0;
   private startValue: number = 0;
+  
+  // Throttling state
+  private pendingUpdate: (() => void) | null = null;
+  private updateScheduled: boolean = false;
+  
+  // Cached synth reference
+  private synth: GlucoseSynth;
 
   constructor(containerId: string) {
     const container = document.getElementById(containerId);
@@ -19,6 +26,9 @@ export class SynthControls {
       throw new Error(`Container element #${containerId} not found`);
     }
     this.container = container;
+    
+    // Cache synth reference
+    this.synth = getSynth();
 
     // Global mouse handlers for knob dragging
     this.handleMouseMove = this.handleMouseMove.bind(this);
@@ -90,7 +100,7 @@ export class SynthControls {
 
     const volumeKnob = this.createKnob('volume', 'VOL', 0, 1, this.volume, (v) => {
       this.volume = v;
-      getSynth().setVolume(v);
+      this.synth.setVolume(v);
     }, true);
     volumeSection.appendChild(volumeKnob);
 
@@ -99,7 +109,7 @@ export class SynthControls {
 
     // Apply initial values to synth
     this.updateSynth();
-    getSynth().setVolume(this.volume);
+    this.synth.setVolume(this.volume);
   }
 
   /**
@@ -220,6 +230,7 @@ export class SynthControls {
 
   /**
    * Handle mouse move for knob dragging
+   * Uses requestAnimationFrame throttling for audio parameter updates
    */
   private handleMouseMove(e: MouseEvent): void {
     if (!this.activeKnob) return;
@@ -235,9 +246,9 @@ export class SynthControls {
     const range = max - min;
     const deltaValue = deltaY * sensitivity * range;
     
-    let newValue = Math.max(min, Math.min(max, this.startValue + deltaValue));
+    const newValue = Math.max(min, Math.min(max, this.startValue + deltaValue));
     
-    // Update knob
+    // Update knob visual immediately (CSS transform is cheap)
     knob.dataset.value = String(newValue);
     const rotation = this.valueToRotation(newValue, min, max);
     knob.style.transform = `rotate(${rotation}deg)`;
@@ -249,8 +260,18 @@ export class SynthControls {
       valueDisplay.textContent = this.formatValue(newValue, id);
     }
 
-    // Call onChange
-    onChange(newValue);
+    // Throttle audio parameter updates using requestAnimationFrame
+    this.pendingUpdate = () => onChange(newValue);
+    if (!this.updateScheduled) {
+      this.updateScheduled = true;
+      requestAnimationFrame(() => {
+        if (this.pendingUpdate) {
+          this.pendingUpdate();
+          this.pendingUpdate = null;
+        }
+        this.updateScheduled = false;
+      });
+    }
   }
 
   /**
@@ -261,6 +282,8 @@ export class SynthControls {
       this.activeKnob.classList.remove('active');
       this.activeKnob = null;
     }
+    // Clear pending update
+    this.pendingUpdate = null;
   }
 
   /**
@@ -291,7 +314,7 @@ export class SynthControls {
    * Update synth with current envelope
    */
   private updateSynth(): void {
-    getSynth().setEnvelope(this.envelope);
+    this.synth.setEnvelope(this.envelope);
   }
 
   /**

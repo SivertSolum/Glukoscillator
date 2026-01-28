@@ -26,12 +26,7 @@
 
       <!-- Main Content -->
       <main class="main-content">
-        <!-- Day Selector Sidebar -->
-        <aside id="day-selector" class="day-selector">
-          <div class="no-data">Drop a CSV file to begin</div>
-        </aside>
-
-        <!-- Center Panel -->
+        <!-- Center Panel (full width) -->
         <div class="center-panel">
           <!-- Drop Zone - Cartridge Slot -->
           <div id="drop-zone" class="drop-zone">
@@ -39,6 +34,11 @@
             <div class="drop-zone-text">Insert LibreView Data</div>
             <div class="file-name"></div>
             <input type="file" id="file-input" accept=".csv" />
+          </div>
+
+          <!-- Day Selector Dropdown -->
+          <div id="day-selector" class="day-selector-dropdown">
+            <div class="dropdown-placeholder">Drop a CSV file to begin</div>
           </div>
 
           <!-- Waveform Display -->

@@ -11,8 +11,12 @@ import { EffectsChain, getEffectsChain } from './effects-chain';
 const MAX_VOICES = 6;
 const NUM_OSCILLATORS = 3;
 
+// Small lookahead for stable audio timing (in seconds)
+const AUDIO_LOOKAHEAD = 0.01;
+
 interface OscillatorLayer {
   synths: Tone.Synth[];
+  availableVoices: Set<Tone.Synth>; // O(1) voice availability tracking
   volume: Tone.Volume;
   wavetable: Float32Array | null;
   partials: number[];
@@ -48,6 +52,7 @@ export class GlucoseSynth {
     for (let osc = 0; osc < NUM_OSCILLATORS; osc++) {
       const volume = new Tone.Volume(0).connect(this.masterVolume);
       const synths: Tone.Synth[] = [];
+      const availableVoices = new Set<Tone.Synth>();
 
       for (let i = 0; i < MAX_VOICES; i++) {
         const synth = new Tone.Synth({
@@ -63,10 +68,12 @@ export class GlucoseSynth {
         }).connect(volume);
 
         synths.push(synth);
+        availableVoices.add(synth); // All voices start available
       }
 
       this.oscillators.push({
         synths,
+        availableVoices,
         volume,
         wavetable: null,
         partials: [],
@@ -236,6 +243,7 @@ export class GlucoseSynth {
 
   /**
    * Trigger a note on all active oscillators
+   * Uses O(1) voice allocation via Set lookup
    */
   noteOn(note: string, velocity: number = 0.8): void {
     if (!this.isInitialized) {
@@ -248,17 +256,18 @@ export class GlucoseSynth {
     }
 
     const activeForNote: Tone.Synth[] = [];
+    const triggerTime = Tone.now() + AUDIO_LOOKAHEAD; // Slight lookahead for stable timing
 
     for (const osc of this.oscillators) {
       // Skip oscillators with no wavetable or zero level
       if (!osc.wavetable || osc.level === 0) continue;
 
-      // Find available voice
-      const usedVoices = Array.from(this.activeVoices.values()).flat();
-      const availableVoice = osc.synths.find(s => !usedVoices.includes(s));
+      // O(1) voice allocation - get first available voice from Set
+      const availableVoice = osc.availableVoices.values().next().value;
       
       if (availableVoice) {
-        availableVoice.triggerAttack(note, Tone.now(), velocity);
+        osc.availableVoices.delete(availableVoice); // Mark as in use
+        availableVoice.triggerAttack(note, triggerTime, velocity);
         activeForNote.push(availableVoice);
       }
     }
@@ -270,12 +279,22 @@ export class GlucoseSynth {
 
   /**
    * Trigger a note off
+   * Returns voices to the available pool
    */
   noteOff(note: string): void {
     const voices = this.activeVoices.get(note);
     if (voices) {
+      const releaseTime = Tone.now() + AUDIO_LOOKAHEAD;
       for (const voice of voices) {
-        voice.triggerRelease(Tone.now());
+        voice.triggerRelease(releaseTime);
+        // Return voice to available pool after release time
+        // Find which oscillator owns this voice and return it
+        for (const osc of this.oscillators) {
+          if (osc.synths.includes(voice)) {
+            osc.availableVoices.add(voice);
+            break;
+          }
+        }
       }
       this.activeVoices.delete(note);
     }
@@ -283,11 +302,20 @@ export class GlucoseSynth {
 
   /**
    * Stop all notes
+   * Returns all voices to available pools
    */
   allNotesOff(): void {
+    const releaseTime = Tone.now() + AUDIO_LOOKAHEAD;
     for (const [, voices] of this.activeVoices) {
       for (const voice of voices) {
-        voice.triggerRelease(Tone.now());
+        voice.triggerRelease(releaseTime);
+        // Return voice to available pool
+        for (const osc of this.oscillators) {
+          if (osc.synths.includes(voice)) {
+            osc.availableVoices.add(voice);
+            break;
+          }
+        }
       }
     }
     this.activeVoices.clear();

@@ -1,7 +1,7 @@
 // MIDI Handler
 // Web MIDI API integration for physical MIDI keyboards
 
-import { getSynth, midiToNoteName } from '../synthesis/synth-engine';
+import { getSynth, midiToNoteName, GlucoseSynth } from '../synthesis/synth-engine';
 
 type MIDICallback = (note: string, isNoteOn: boolean, velocity: number) => void;
 
@@ -11,6 +11,16 @@ export class MIDIHandler {
   private callback: MIDICallback | null = null;
   private isEnabled = true;
   private connectionCallback: ((connected: boolean, deviceName: string) => void) | null = null;
+  
+  // Cached synth reference (lazily initialized)
+  private _synth: GlucoseSynth | null = null;
+  
+  private get synth(): GlucoseSynth {
+    if (!this._synth) {
+      this._synth = getSynth();
+    }
+    return this._synth;
+  }
 
   constructor() {
     this.handleMIDIMessage = this.handleMIDIMessage.bind(this);
@@ -68,7 +78,7 @@ export class MIDIHandler {
   setEnabled(enabled: boolean): void {
     this.isEnabled = enabled;
     if (!enabled) {
-      getSynth().allNotesOff();
+      this.synth.allNotesOff();
     }
   }
 
@@ -152,23 +162,22 @@ export class MIDIHandler {
     const messageType = status & 0xf0;
     
     const noteName = midiToNoteName(noteNumber);
-    const synth = getSynth();
 
     switch (messageType) {
       case 0x90: // Note On
         if (velocity > 0) {
           const normalizedVelocity = velocity / 127;
-          synth.noteOn(noteName, normalizedVelocity);
+          this.synth.noteOn(noteName, normalizedVelocity);
           this.callback?.(noteName, true, normalizedVelocity);
         } else {
           // Note On with velocity 0 is equivalent to Note Off
-          synth.noteOff(noteName);
+          this.synth.noteOff(noteName);
           this.callback?.(noteName, false, 0);
         }
         break;
 
       case 0x80: // Note Off
-        synth.noteOff(noteName);
+        this.synth.noteOff(noteName);
         this.callback?.(noteName, false, 0);
         break;
 

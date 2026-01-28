@@ -9,28 +9,6 @@
 }
 
 @media (max-width: 900px) {
-  .main-content {
-    grid-template-columns: 1fr;
-  }
-  
-  .day-selector {
-    max-height: 180px;
-    order: -1;
-  }
-  
-  .day-list {
-    display: flex;
-    overflow-x: auto;
-    overflow-y: hidden;
-  }
-  
-  .day-item {
-    flex-shrink: 0;
-    width: 150px;
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
   .controls-row {
     flex-direction: column;
   }
@@ -43,6 +21,15 @@
   .piano-keyboard {
     overflow-x: auto;
     justify-content: flex-start;
+  }
+  
+  /* Dropdown adjustments for smaller screens */
+  .header-stats {
+    display: none;
+  }
+  
+  .header-waveform {
+    width: 60px;
   }
 }
 

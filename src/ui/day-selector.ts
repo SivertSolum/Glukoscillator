@@ -1,18 +1,22 @@
-// Day Selector
-// UI component for selecting glucose data days
+// Day Selector Dropdown
+// UI component for selecting glucose data days with waveform preview
 
 import type { DailyGlucoseData, ParsedLibreViewData } from '../types';
 import { formatDateForDisplay } from '../parser/libreview';
 import { getWaveformForDisplay } from '../synthesis/wavetable';
 
 type DaySelectedCallback = (date: string, dayData: DailyGlucoseData, oscIndex: number | null) => void;
+type PreviewCallback = (dayData: DailyGlucoseData | null) => void;
 
 export class DaySelector {
   private container: HTMLElement;
   private data: ParsedLibreViewData | null = null;
   private selectedDate: string | null = null;
   private onSelectCallback: DaySelectedCallback | null = null;
+  private onPreviewCallback: PreviewCallback | null = null;
   private selectingForOsc: number | null = null;
+  private isOpen: boolean = false;
+  private previewingDate: string | null = null;
 
   constructor(containerId: string) {
     const container = document.getElementById(containerId);
@@ -25,7 +29,23 @@ export class DaySelector {
     window.addEventListener('osc-select-mode', ((e: CustomEvent) => {
       this.selectingForOsc = e.detail.oscIndex;
       this.container.classList.add('selecting-for-osc');
+      // Auto-open dropdown when selecting for oscillator
+      this.open();
     }) as EventListener);
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!this.container.contains(e.target as Node) && this.isOpen) {
+        this.close();
+      }
+    });
+
+    // Close on escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.isOpen) {
+        this.close();
+      }
+    });
   }
 
   /**
@@ -33,6 +53,13 @@ export class DaySelector {
    */
   onSelect(callback: DaySelectedCallback): void {
     this.onSelectCallback = callback;
+  }
+
+  /**
+   * Set callback for hover preview
+   */
+  onPreview(callback: PreviewCallback): void {
+    this.onPreviewCallback = callback;
   }
 
   /**
@@ -65,28 +92,67 @@ export class DaySelector {
   }
 
   /**
-   * Render the day selector
+   * Open the dropdown
+   */
+  open(): void {
+    this.isOpen = true;
+    this.container.classList.add('open');
+  }
+
+  /**
+   * Close the dropdown
+   */
+  close(): void {
+    this.isOpen = false;
+    this.container.classList.remove('open');
+    
+    // Reset preview to selected day
+    if (this.previewingDate && this.selectedDate && this.data) {
+      const selectedData = this.data.days.get(this.selectedDate);
+      if (selectedData) {
+        this.onPreviewCallback?.(selectedData);
+      }
+    }
+    this.previewingDate = null;
+    
+    // Update previewing state on items
+    const items = this.container.querySelectorAll('.day-item');
+    items.forEach(item => item.classList.remove('previewing'));
+  }
+
+  /**
+   * Toggle dropdown open/close
+   */
+  toggle(): void {
+    if (this.isOpen) {
+      this.close();
+    } else {
+      this.open();
+    }
+  }
+
+  /**
+   * Render the dropdown
    */
   render(): void {
     this.container.innerHTML = '';
-    this.container.className = 'day-selector';
+    this.container.className = 'day-selector-dropdown';
 
     if (!this.data || this.data.days.size === 0) {
-      this.container.innerHTML = '<div class="no-data">No data loaded</div>';
+      this.container.innerHTML = '<div class="dropdown-placeholder">No data loaded</div>';
       return;
     }
 
     // Sort dates in reverse chronological order
     const dates = Array.from(this.data.days.keys()).sort().reverse();
 
-    // Create header
-    const header = document.createElement('div');
-    header.className = 'day-selector-header';
-    header.innerHTML = `
-      <span class="day-count">${dates.length} days</span>
-      <span class="device-name">${this.data.deviceName}</span>
-    `;
+    // Create dropdown header
+    const header = this.createHeader(dates.length);
     this.container.appendChild(header);
+
+    // Create dropdown panel
+    const panel = document.createElement('div');
+    panel.className = 'dropdown-panel';
 
     // Create scrollable list
     const list = document.createElement('div');
@@ -98,7 +164,73 @@ export class DaySelector {
       list.appendChild(item);
     }
 
-    this.container.appendChild(list);
+    panel.appendChild(list);
+    this.container.appendChild(panel);
+
+    // Update header with selected day info
+    this.updateHeader();
+  }
+
+  /**
+   * Create the dropdown header
+   */
+  private createHeader(dayCount: number): HTMLElement {
+    const header = document.createElement('div');
+    header.className = 'dropdown-header';
+    
+    header.innerHTML = `
+      <div class="header-selected-day">
+        <span class="header-date">Select a day</span>
+        <span class="header-stats"></span>
+        <div class="header-waveform"></div>
+      </div>
+      <span class="header-day-count">${dayCount} days</span>
+      <div class="dropdown-arrow">
+        <svg viewBox="0 0 24 24">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </div>
+    `;
+
+    header.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggle();
+    });
+
+    return header;
+  }
+
+  /**
+   * Update header with selected day info
+   */
+  private updateHeader(): void {
+    if (!this.selectedDate || !this.data) return;
+
+    const dayData = this.data.days.get(this.selectedDate);
+    if (!dayData) return;
+
+    const dateEl = this.container.querySelector('.header-date');
+    const statsEl = this.container.querySelector('.header-stats');
+    const waveformEl = this.container.querySelector('.header-waveform');
+
+    if (dateEl) {
+      dateEl.textContent = formatDateForDisplay(this.selectedDate);
+    }
+
+    if (statsEl) {
+      const stats = dayData.stats;
+      const tirClass = stats.timeInRange >= 70 ? 'good' : stats.timeInRange >= 50 ? 'warning' : 'bad';
+      statsEl.innerHTML = `
+        <span class="stat">↓${Math.round(stats.min)}</span>
+        <span class="stat">μ${Math.round(stats.avg)}</span>
+        <span class="stat">↑${Math.round(stats.max)}</span>
+        <span class="stat tir ${tirClass}">${Math.round(stats.timeInRange)}%</span>
+      `;
+    }
+
+    if (waveformEl) {
+      waveformEl.innerHTML = this.createMiniWaveform(dayData);
+    }
   }
 
   /**
@@ -129,9 +261,45 @@ export class DaySelector {
       <div class="day-waveform">${waveformPreview}</div>
     `;
 
-    item.addEventListener('click', () => this.selectDate(date));
+    // Click to select
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.selectDate(date);
+      this.close();
+    });
+
+    // Hover to preview
+    item.addEventListener('mouseenter', () => {
+      this.previewDate(date);
+    });
+
+    item.addEventListener('mouseleave', () => {
+      // Don't reset preview immediately - let close() handle it
+    });
 
     return item;
+  }
+
+  /**
+   * Preview a date on hover
+   */
+  private previewDate(date: string): void {
+    if (!this.data) return;
+
+    const dayData = this.data.days.get(date);
+    if (!dayData) return;
+
+    this.previewingDate = date;
+    
+    // Update visual state
+    const items = this.container.querySelectorAll('.day-item');
+    items.forEach(item => {
+      const isPreview = item.getAttribute('data-date') === date;
+      item.classList.toggle('previewing', isPreview && date !== this.selectedDate);
+    });
+
+    // Trigger preview callback
+    this.onPreviewCallback?.(dayData);
   }
 
   /**
@@ -176,6 +344,9 @@ export class DaySelector {
       item.classList.toggle('selected', item.getAttribute('data-date') === date);
     });
 
+    // Update header
+    this.updateHeader();
+
     // Call callback with oscillator index if in selection mode
     const oscIndex = this.selectingForOsc;
     this.onSelectCallback?.(date, dayData, oscIndex);
@@ -201,4 +372,3 @@ export class DaySelector {
 export function createDaySelector(containerId: string): DaySelector {
   return new DaySelector(containerId);
 }
-

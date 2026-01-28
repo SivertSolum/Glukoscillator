@@ -45,6 +45,13 @@ async function init(): Promise<void> {
     onDaySelected(date, dayData, oscIndex);
   });
 
+  // Set up hover preview callback
+  daySelector.onPreview((dayData) => {
+    if (dayData) {
+      waveformDisplay?.setData(dayData);
+    }
+  });
+
   // Set up oscillator mixer callbacks
   oscillatorMixer.onChange((_oscIndex, dayData) => {
     // Update waveform display to show the first active oscillator
@@ -86,7 +93,57 @@ async function init(): Promise<void> {
     });
   }
 
+  // Auto-load sample data on startup
+  await loadSampleData();
+
   console.log('Glukoscillator ready!');
+}
+
+/**
+ * Load the bundled sample glucose data
+ */
+async function loadSampleData(): Promise<void> {
+  try {
+    const response = await fetch('/sample-data/sample-glucose.csv');
+    if (!response.ok) {
+      console.warn('Sample data not found');
+      return;
+    }
+    
+    const text = await response.text();
+    glucoseData = parseLibreViewCSV(text);
+    
+    if (glucoseData.days.size === 0) {
+      console.warn('No glucose data found in sample file');
+      return;
+    }
+
+    // Generate wavetables for all days
+    generateAllWavetables(glucoseData.days);
+
+    // Update UI
+    daySelector?.setData(glucoseData);
+    oscillatorMixer?.setData(glucoseData);
+    
+    // Update drop zone to show loaded state
+    const dropZone = document.getElementById('drop-zone');
+    dropZone?.classList.add('loaded');
+    
+    const fileNameEl = dropZone?.querySelector('.file-name');
+    if (fileNameEl) {
+      fileNameEl.textContent = `Sample Data (${glucoseData.days.size} days)`;
+    }
+
+    // Auto-assign first day to oscillator 1
+    const dates = Array.from(glucoseData.days.keys()).sort().reverse();
+    if (dates.length > 0) {
+      oscillatorMixer?.setOscillatorDay(0, dates[0]);
+    }
+
+    console.log(`Auto-loaded sample data: ${glucoseData.days.size} days`);
+  } catch (error) {
+    console.warn('Failed to load sample data:', error);
+  }
 }
 
 /**

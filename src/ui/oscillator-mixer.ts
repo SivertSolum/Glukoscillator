@@ -1,7 +1,7 @@
 // Oscillator Mixer
 // UI for managing 3 oscillator layers with individual wavetables
 
-import { getSynth } from '../synthesis/synth-engine';
+import { getSynth, GlucoseSynth } from '../synthesis/synth-engine';
 import { getWaveformForDisplay } from '../synthesis/wavetable';
 import type { DailyGlucoseData, ParsedLibreViewData } from '../types';
 
@@ -13,6 +13,9 @@ export class OscillatorMixer {
   private selectedDays: (string | null)[] = [null, null, null];
   private onChangeCallback: OscillatorChangeCallback | null = null;
   private onRandomizeCallback: (() => void) | null = null;
+  
+  // Cached synth reference
+  private synth: GlucoseSynth;
 
   constructor(containerId: string) {
     const container = document.getElementById(containerId);
@@ -20,6 +23,9 @@ export class OscillatorMixer {
       throw new Error(`Container element #${containerId} not found`);
     }
     this.container = container;
+    
+    // Cache synth reference
+    this.synth = getSynth();
   }
 
   /**
@@ -52,15 +58,14 @@ export class OscillatorMixer {
     
     this.selectedDays[oscIndex] = date;
     
-    const synth = getSynth();
     if (date && this.data) {
       const dayData = this.data.days.get(date);
       if (dayData?.wavetable) {
-        synth.setWavetable(oscIndex, dayData.wavetable, date);
+        this.synth.setWavetable(oscIndex, dayData.wavetable, date);
         this.onChangeCallback?.(oscIndex, dayData);
       }
     } else {
-      synth.clearWavetable(oscIndex);
+      this.synth.clearWavetable(oscIndex);
       this.onChangeCallback?.(oscIndex, null);
     }
     
@@ -90,8 +95,7 @@ export class OscillatorMixer {
     }
     
     // Randomize effects chain parameters
-    const effectsChain = getSynth().getEffectsChain();
-    effectsChain.randomize();
+    this.synth.getEffectsChain().randomize();
     
     this.onRandomizeCallback?.();
   }
@@ -138,9 +142,8 @@ export class OscillatorMixer {
     slot.className = 'oscillator-slot';
     slot.id = `osc-slot-${index}`;
 
-    const synth = getSynth();
-    const level = synth.getOscillatorLevel(index);
-    const info = synth.getOscillatorInfo(index);
+    const level = this.synth.getOscillatorLevel(index);
+    const info = this.synth.getOscillatorInfo(index);
 
     // Oscillator label
     const label = document.createElement('div');
@@ -181,7 +184,7 @@ export class OscillatorMixer {
     
     levelSlider.addEventListener('input', () => {
       const newLevel = parseInt(levelSlider.value) / 100;
-      synth.setOscillatorLevel(index, newLevel);
+      this.synth.setOscillatorLevel(index, newLevel);
     });
 
     const levelLabel = document.createElement('span');
@@ -236,7 +239,7 @@ export class OscillatorMixer {
     const waveContainer = document.getElementById(`osc-wave-${index}`);
     const dayLabel = document.getElementById(`osc-day-${index}`);
     
-    const info = getSynth().getOscillatorInfo(index);
+    const info = this.synth.getOscillatorInfo(index);
     
     if (waveContainer) {
       if (info?.wavetable) {

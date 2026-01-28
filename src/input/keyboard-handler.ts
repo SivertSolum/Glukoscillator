@@ -2,7 +2,7 @@
 // Maps QWERTY keys to piano notes
 
 import { COMPUTER_KEY_MAP } from '../types';
-import { getSynth } from '../synthesis/synth-engine';
+import { getSynth, GlucoseSynth } from '../synthesis/synth-engine';
 
 type KeyCallback = (note: string, isNoteOn: boolean) => void;
 
@@ -11,6 +11,16 @@ export class KeyboardHandler {
   private pressedKeys: Set<string> = new Set();
   private callback: KeyCallback | null = null;
   private isEnabled = true;
+  
+  // Cached synth reference (lazily initialized to avoid circular dependency)
+  private _synth: GlucoseSynth | null = null;
+  
+  private get synth(): GlucoseSynth {
+    if (!this._synth) {
+      this._synth = getSynth();
+    }
+    return this._synth;
+  }
 
   constructor() {
     // Build key-to-note map
@@ -73,9 +83,8 @@ export class KeyboardHandler {
       event.preventDefault();
       this.pressedKeys.add(key);
       
-      // Trigger note on synth
-      const synth = getSynth();
-      synth.noteOn(note);
+      // Trigger note on synth (using cached reference)
+      this.synth.noteOn(note);
       
       // Call callback
       this.callback?.(note, true);
@@ -95,9 +104,8 @@ export class KeyboardHandler {
       event.preventDefault();
       this.pressedKeys.delete(key);
       
-      // Trigger note off on synth
-      const synth = getSynth();
-      synth.noteOff(note);
+      // Trigger note off on synth (using cached reference)
+      this.synth.noteOff(note);
       
       // Call callback
       this.callback?.(note, false);
@@ -119,11 +127,10 @@ export class KeyboardHandler {
    * Release all pressed notes
    */
   allNotesOff(): void {
-    const synth = getSynth();
     for (const key of this.pressedKeys) {
       const note = this.keyMap.get(key);
       if (note) {
-        synth.noteOff(note);
+        this.synth.noteOff(note);
         this.callback?.(note, false);
       }
     }

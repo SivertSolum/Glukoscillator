@@ -1,54 +1,166 @@
-/* Glukoscillator - Day Selector Styles */
+/* Glukoscillator - Day Selector Dropdown Styles */
 
 /* =====================================================
-   DAY SELECTOR - Patch Browser Style
+   DAY SELECTOR DROPDOWN - Compact Header with Expandable Panel
    ===================================================== */
-.day-selector {
+.day-selector-dropdown {
+  position: relative;
+  z-index: 100;
+}
+
+/* Placeholder when no data */
+.dropdown-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-md);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-style: italic;
   background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
   border-radius: var(--radius-lg);
   border: 2px solid var(--metal-dark);
-  box-shadow: 
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    inset 0 0 30px rgba(0, 0, 0, 0.3),
-    0 4px 20px rgba(0, 0, 0, 0.3);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
 }
 
-.day-selector-header {
-  padding: var(--spacing-md);
-  background: linear-gradient(180deg, var(--metal-mid) 0%, var(--metal-dark) 100%);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.3);
+/* =====================================================
+   DROPDOWN HEADER (Collapsed State)
+   ===================================================== */
+.dropdown-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: linear-gradient(180deg, var(--metal-mid) 0%, var(--metal-dark) 100%);
+  border-radius: var(--radius-lg);
+  border: 2px solid var(--metal-dark);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.day-count {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
+.dropdown-header:hover {
+  border-color: var(--accent-primary);
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 20px rgba(232, 168, 124, 0.2);
+}
+
+.day-selector-dropdown.open .dropdown-header {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-color: var(--accent-primary);
+}
+
+/* Selected day info in header */
+.header-selected-day {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex: 1;
+}
+
+.header-date {
+  font-size: 0.9rem;
   font-weight: 600;
-  color: var(--accent-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  color: var(--text-primary);
+  min-width: 100px;
 }
 
-.device-name {
+.header-stats {
+  display: flex;
+  gap: var(--spacing-sm);
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
+}
+
+.header-waveform {
+  width: 80px;
+  height: 24px;
+  opacity: 0.8;
+}
+
+.header-waveform .mini-wave {
+  width: 100%;
+  height: 100%;
+  color: var(--accent-primary);
+}
+
+/* Day count badge */
+.header-day-count {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--accent-primary);
   padding: 2px 8px;
   background: rgba(0, 0, 0, 0.3);
   border-radius: var(--radius-sm);
+  margin-right: var(--spacing-sm);
 }
 
+/* Dropdown arrow */
+.dropdown-arrow {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: transform 0.3s ease;
+}
+
+.dropdown-arrow svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.day-selector-dropdown.open .dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+/* =====================================================
+   DROPDOWN PANEL (Expanded State)
+   ===================================================== */
+.dropdown-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+  border: 2px solid var(--accent-primary);
+  border-top: none;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  box-shadow: 
+    0 12px 40px rgba(0, 0, 0, 0.5),
+    inset 0 0 30px rgba(0, 0, 0, 0.3);
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 99;
+}
+
+.day-selector-dropdown.open .dropdown-panel {
+  max-height: 320px;
+  opacity: 1;
+}
+
+/* Day list inside panel */
 .day-list {
-  flex: 1;
+  max-height: 300px;
   overflow-y: auto;
   padding: var(--spacing-sm);
 }
 
+/* =====================================================
+   DAY ITEMS
+   ===================================================== */
 .day-item {
   display: flex;
   justify-content: space-between;
@@ -57,23 +169,32 @@
   margin-bottom: var(--spacing-xs);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   border: 1px solid transparent;
   background: transparent;
 }
 
 .day-item:hover {
-  background: rgba(232, 168, 124, 0.08);
-  border-color: rgba(232, 168, 124, 0.2);
+  background: rgba(232, 168, 124, 0.1);
+  border-color: rgba(232, 168, 124, 0.3);
 }
 
 .day-item.selected {
-  background: linear-gradient(135deg, rgba(232, 168, 124, 0.15) 0%, rgba(232, 168, 124, 0.05) 100%);
+  background: linear-gradient(135deg, rgba(232, 168, 124, 0.2) 0%, rgba(232, 168, 124, 0.08) 100%);
   border-color: var(--accent-primary);
-  box-shadow: 0 0 20px rgba(232, 168, 124, 0.2);
+  box-shadow: 0 0 15px rgba(232, 168, 124, 0.15);
 }
 
-.day-info { flex: 1; }
+/* Hover preview indicator */
+.day-item.previewing {
+  background: rgba(133, 103, 123, 0.15);
+  border-color: var(--accent-secondary);
+}
+
+.day-info {
+  flex: 1;
+  min-width: 0;
+}
 
 .day-date {
   font-size: 0.85rem;
@@ -90,7 +211,9 @@
   color: var(--text-muted);
 }
 
-.stat { opacity: 0.8; }
+.stat {
+  opacity: 0.8;
+}
 
 .stat.tir {
   padding: 1px 6px;
@@ -113,13 +236,18 @@
   color: var(--accent-glucose-danger);
 }
 
+/* Mini waveform in day items */
 .day-waveform {
   width: 60px;
   height: 24px;
   opacity: 0.6;
+  flex-shrink: 0;
 }
 
-.day-item.selected .day-waveform { opacity: 1; }
+.day-item.selected .day-waveform,
+.day-item:hover .day-waveform {
+  opacity: 1;
+}
 
 .mini-wave {
   width: 100%;
@@ -127,24 +255,57 @@
   color: var(--accent-primary);
 }
 
+/* Selection checkmark */
+.day-item.selected::after {
+  content: '✓';
+  margin-left: var(--spacing-sm);
+  color: var(--accent-primary);
+  font-weight: bold;
+}
+
+/* =====================================================
+   OSCILLATOR SELECTION MODE
+   ===================================================== */
+.day-selector-dropdown.selecting-for-osc .dropdown-header {
+  border-color: var(--accent-secondary);
+  box-shadow: 0 0 25px rgba(133, 103, 123, 0.4);
+}
+
+.day-selector-dropdown.selecting-for-osc .day-item:hover {
+  background: rgba(133, 103, 123, 0.2);
+  border-color: var(--accent-secondary);
+}
+
+/* =====================================================
+   NO DATA STATE
+   ===================================================== */
 .no-data {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  padding: var(--spacing-lg);
   color: var(--text-muted);
   font-size: 0.9rem;
   font-style: italic;
 }
 
-/* Day selector in selection mode */
-.day-selector.selecting-for-osc {
-  border-color: var(--accent-secondary);
-  box-shadow: 0 0 30px rgba(133, 103, 123, 0.3);
+/* =====================================================
+   SCROLLBAR STYLING
+   ===================================================== */
+.day-list::-webkit-scrollbar {
+  width: 6px;
 }
 
-.day-selector.selecting-for-osc .day-item:hover {
-  background: rgba(133, 103, 123, 0.2);
-  border-color: var(--accent-secondary);
+.day-list::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
 }
 
+.day-list::-webkit-scrollbar-thumb {
+  background: var(--metal-light);
+  border-radius: 3px;
+}
+
+.day-list::-webkit-scrollbar-thumb:hover {
+  background: var(--metal-highlight);
+}

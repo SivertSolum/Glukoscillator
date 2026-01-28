@@ -157,20 +157,28 @@ export class EffectsChain {
     }
   }
 
+  /**
+   * Rewire the effects chain - only enabled effects are connected
+   * Disabled effects are completely bypassed (no audio processing overhead)
+   */
   private rewireChain(): void {
+    // Disconnect everything first
     this.input.disconnect();
     for (const [, effect] of this.effects) {
       effect.node.disconnect();
     }
 
     let currentNode: Tone.ToneAudioNode = this.input;
+    
+    // Only connect enabled effects in order
     for (const effectId of this.order) {
       const effect = this.effects.get(effectId);
-      if (effect) {
+      if (effect && effect.enabled) {
         currentNode.connect(effect.node);
         currentNode = effect.node;
       }
     }
+    
     currentNode.connect(this.output);
   }
 
@@ -194,12 +202,13 @@ export class EffectsChain {
 
   setEnabled(effectId: EffectId, enabled: boolean): void {
     const effect = this.effects.get(effectId);
-    if (!effect) return;
+    if (!effect || effect.enabled === enabled) return;
+    
     effect.enabled = enabled;
-    const node = effect.node as any;
-    if ('wet' in node && !enabled) {
-      node.wet.value = 0;
-    }
+    
+    // Rewire chain to add/remove the effect from audio path
+    this.rewireChain();
+    
     this.onChangeCallback?.(effectId, this.getEffectParams(effectId));
   }
 
@@ -440,21 +449,46 @@ export class EffectsChain {
   randomize(): void {
     const rand = (min: number, max: number) => Math.random() * (max - min) + min;
 
-    this.setCompressor({ threshold: rand(RANDOM_RANGES.compressor.threshold.min, RANDOM_RANGES.compressor.threshold.max), ratio: rand(RANDOM_RANGES.compressor.ratio.min, RANDOM_RANGES.compressor.ratio.max), enabled: Math.random() < 0.35 });
-    this.setEQ3({ low: rand(RANDOM_RANGES.eq3.low.min, RANDOM_RANGES.eq3.low.max), mid: rand(RANDOM_RANGES.eq3.mid.min, RANDOM_RANGES.eq3.mid.max), high: rand(RANDOM_RANGES.eq3.high.min, RANDOM_RANGES.eq3.high.max), enabled: Math.random() < 0.4 });
-    this.setBitCrusher({ bits: Math.round(rand(RANDOM_RANGES.bitcrusher.bits.min, RANDOM_RANGES.bitcrusher.bits.max)), wet: rand(RANDOM_RANGES.bitcrusher.wet.min, RANDOM_RANGES.bitcrusher.wet.max), enabled: Math.random() < 0.25 });
-    this.setDistortion({ amount: rand(RANDOM_RANGES.distortion.amount.min, RANDOM_RANGES.distortion.amount.max), wet: rand(RANDOM_RANGES.distortion.wet.min, RANDOM_RANGES.distortion.wet.max), enabled: Math.random() < 0.4 });
-    this.setAutoWah({ baseFrequency: rand(RANDOM_RANGES.autowah.baseFrequency.min, RANDOM_RANGES.autowah.baseFrequency.max), octaves: Math.round(rand(RANDOM_RANGES.autowah.octaves.min, RANDOM_RANGES.autowah.octaves.max)), wet: rand(RANDOM_RANGES.autowah.wet.min, RANDOM_RANGES.autowah.wet.max), enabled: Math.random() < 0.3 });
-    this.setAutoFilter({ frequency: rand(RANDOM_RANGES.autofilter.frequency.min, RANDOM_RANGES.autofilter.frequency.max), depth: rand(RANDOM_RANGES.autofilter.depth.min, RANDOM_RANGES.autofilter.depth.max), octaves: Math.round(rand(RANDOM_RANGES.autofilter.octaves.min, RANDOM_RANGES.autofilter.octaves.max)), wet: rand(RANDOM_RANGES.autofilter.wet.min, RANDOM_RANGES.autofilter.wet.max), enabled: Math.random() < 0.35 });
-    this.setPhaser({ frequency: rand(RANDOM_RANGES.phaser.frequency.min, RANDOM_RANGES.phaser.frequency.max), octaves: Math.round(rand(RANDOM_RANGES.phaser.octaves.min, RANDOM_RANGES.phaser.octaves.max)), wet: rand(RANDOM_RANGES.phaser.wet.min, RANDOM_RANGES.phaser.wet.max), enabled: Math.random() > 0.5 });
-    this.setChorus({ frequency: rand(RANDOM_RANGES.chorus.frequency.min, RANDOM_RANGES.chorus.frequency.max), depth: rand(RANDOM_RANGES.chorus.depth.min, RANDOM_RANGES.chorus.depth.max), wet: rand(RANDOM_RANGES.chorus.wet.min, RANDOM_RANGES.chorus.wet.max), enabled: Math.random() > 0.5 });
-    this.setTremolo({ frequency: rand(RANDOM_RANGES.tremolo.frequency.min, RANDOM_RANGES.tremolo.frequency.max), depth: rand(RANDOM_RANGES.tremolo.depth.min, RANDOM_RANGES.tremolo.depth.max), wet: rand(RANDOM_RANGES.tremolo.wet.min, RANDOM_RANGES.tremolo.wet.max), enabled: Math.random() < 0.4 });
-    this.setVibrato({ frequency: rand(RANDOM_RANGES.vibrato.frequency.min, RANDOM_RANGES.vibrato.frequency.max), depth: rand(RANDOM_RANGES.vibrato.depth.min, RANDOM_RANGES.vibrato.depth.max), wet: rand(RANDOM_RANGES.vibrato.wet.min, RANDOM_RANGES.vibrato.wet.max), enabled: Math.random() < 0.35 });
-    this.setFreqShift({ frequency: rand(RANDOM_RANGES.freqshift.frequency.min, RANDOM_RANGES.freqshift.frequency.max), wet: rand(RANDOM_RANGES.freqshift.wet.min, RANDOM_RANGES.freqshift.wet.max), enabled: Math.random() < 0.2 });
-    this.setPitchShift({ pitch: Math.round(rand(RANDOM_RANGES.pitchshift.pitch.min, RANDOM_RANGES.pitchshift.pitch.max)), wet: rand(RANDOM_RANGES.pitchshift.wet.min, RANDOM_RANGES.pitchshift.wet.max), enabled: Math.random() < 0.25 });
-    this.setDelay({ time: rand(RANDOM_RANGES.delay.time.min, RANDOM_RANGES.delay.time.max), feedback: rand(RANDOM_RANGES.delay.feedback.min, RANDOM_RANGES.delay.feedback.max), wet: rand(RANDOM_RANGES.delay.wet.min, RANDOM_RANGES.delay.wet.max), enabled: Math.random() < 0.45 });
-    this.setReverb({ decay: rand(RANDOM_RANGES.reverb.decay.min, RANDOM_RANGES.reverb.decay.max), wet: rand(RANDOM_RANGES.reverb.wet.min, RANDOM_RANGES.reverb.wet.max), enabled: Math.random() < 0.6 });
-    this.setStereoWidener({ width: rand(RANDOM_RANGES.stereowidener.width.min, RANDOM_RANGES.stereowidener.width.max), wet: rand(RANDOM_RANGES.stereowidener.wet.min, RANDOM_RANGES.stereowidener.wet.max), enabled: Math.random() < 0.45 });
+    // First, disable all effects
+    for (const effectId of DEFAULT_ORDER) {
+      this.setEnabled(effectId, false);
+    }
+
+    // Randomly select 3-5 effects to enable
+    const numEffects = Math.floor(Math.random() * 3) + 3; // 3 to 5 effects
+    const shuffledEffects = [...DEFAULT_ORDER].sort(() => Math.random() - 0.5);
+    const selectedEffects = new Set(shuffledEffects.slice(0, numEffects));
+
+    // Randomize parameters for all effects, but only enable selected ones
+    this.setCompressor({ threshold: rand(RANDOM_RANGES.compressor.threshold.min, RANDOM_RANGES.compressor.threshold.max), ratio: rand(RANDOM_RANGES.compressor.ratio.min, RANDOM_RANGES.compressor.ratio.max), enabled: selectedEffects.has('compressor') });
+    this.setEQ3({ low: rand(RANDOM_RANGES.eq3.low.min, RANDOM_RANGES.eq3.low.max), mid: rand(RANDOM_RANGES.eq3.mid.min, RANDOM_RANGES.eq3.mid.max), high: rand(RANDOM_RANGES.eq3.high.min, RANDOM_RANGES.eq3.high.max), enabled: selectedEffects.has('eq3') });
+    this.setBitCrusher({ bits: Math.round(rand(RANDOM_RANGES.bitcrusher.bits.min, RANDOM_RANGES.bitcrusher.bits.max)), wet: rand(RANDOM_RANGES.bitcrusher.wet.min, RANDOM_RANGES.bitcrusher.wet.max), enabled: selectedEffects.has('bitcrusher') });
+    this.setDistortion({ amount: rand(RANDOM_RANGES.distortion.amount.min, RANDOM_RANGES.distortion.amount.max), wet: rand(RANDOM_RANGES.distortion.wet.min, RANDOM_RANGES.distortion.wet.max), enabled: selectedEffects.has('distortion') });
+    this.setAutoWah({ baseFrequency: rand(RANDOM_RANGES.autowah.baseFrequency.min, RANDOM_RANGES.autowah.baseFrequency.max), octaves: Math.round(rand(RANDOM_RANGES.autowah.octaves.min, RANDOM_RANGES.autowah.octaves.max)), wet: rand(RANDOM_RANGES.autowah.wet.min, RANDOM_RANGES.autowah.wet.max), enabled: selectedEffects.has('autowah') });
+    this.setAutoFilter({ frequency: rand(RANDOM_RANGES.autofilter.frequency.min, RANDOM_RANGES.autofilter.frequency.max), depth: rand(RANDOM_RANGES.autofilter.depth.min, RANDOM_RANGES.autofilter.depth.max), octaves: Math.round(rand(RANDOM_RANGES.autofilter.octaves.min, RANDOM_RANGES.autofilter.octaves.max)), wet: rand(RANDOM_RANGES.autofilter.wet.min, RANDOM_RANGES.autofilter.wet.max), enabled: selectedEffects.has('autofilter') });
+    this.setPhaser({ frequency: rand(RANDOM_RANGES.phaser.frequency.min, RANDOM_RANGES.phaser.frequency.max), octaves: Math.round(rand(RANDOM_RANGES.phaser.octaves.min, RANDOM_RANGES.phaser.octaves.max)), wet: rand(RANDOM_RANGES.phaser.wet.min, RANDOM_RANGES.phaser.wet.max), enabled: selectedEffects.has('phaser') });
+    this.setChorus({ frequency: rand(RANDOM_RANGES.chorus.frequency.min, RANDOM_RANGES.chorus.frequency.max), depth: rand(RANDOM_RANGES.chorus.depth.min, RANDOM_RANGES.chorus.depth.max), wet: rand(RANDOM_RANGES.chorus.wet.min, RANDOM_RANGES.chorus.wet.max), enabled: selectedEffects.has('chorus') });
+    this.setTremolo({ frequency: rand(RANDOM_RANGES.tremolo.frequency.min, RANDOM_RANGES.tremolo.frequency.max), depth: rand(RANDOM_RANGES.tremolo.depth.min, RANDOM_RANGES.tremolo.depth.max), wet: rand(RANDOM_RANGES.tremolo.wet.min, RANDOM_RANGES.tremolo.wet.max), enabled: selectedEffects.has('tremolo') });
+    this.setVibrato({ frequency: rand(RANDOM_RANGES.vibrato.frequency.min, RANDOM_RANGES.vibrato.frequency.max), depth: rand(RANDOM_RANGES.vibrato.depth.min, RANDOM_RANGES.vibrato.depth.max), wet: rand(RANDOM_RANGES.vibrato.wet.min, RANDOM_RANGES.vibrato.wet.max), enabled: selectedEffects.has('vibrato') });
+    this.setFreqShift({ frequency: rand(RANDOM_RANGES.freqshift.frequency.min, RANDOM_RANGES.freqshift.frequency.max), wet: rand(RANDOM_RANGES.freqshift.wet.min, RANDOM_RANGES.freqshift.wet.max), enabled: selectedEffects.has('freqshift') });
+    this.setPitchShift({ pitch: Math.round(rand(RANDOM_RANGES.pitchshift.pitch.min, RANDOM_RANGES.pitchshift.pitch.max)), wet: rand(RANDOM_RANGES.pitchshift.wet.min, RANDOM_RANGES.pitchshift.wet.max), enabled: selectedEffects.has('pitchshift') });
+    this.setDelay({ time: rand(RANDOM_RANGES.delay.time.min, RANDOM_RANGES.delay.time.max), feedback: rand(RANDOM_RANGES.delay.feedback.min, RANDOM_RANGES.delay.feedback.max), wet: rand(RANDOM_RANGES.delay.wet.min, RANDOM_RANGES.delay.wet.max), enabled: selectedEffects.has('delay') });
+    this.setReverb({ decay: rand(RANDOM_RANGES.reverb.decay.min, RANDOM_RANGES.reverb.decay.max), wet: rand(RANDOM_RANGES.reverb.wet.min, RANDOM_RANGES.reverb.wet.max), enabled: selectedEffects.has('reverb') });
+    this.setStereoWidener({ width: rand(RANDOM_RANGES.stereowidener.width.min, RANDOM_RANGES.stereowidener.width.max), wet: rand(RANDOM_RANGES.stereowidener.wet.min, RANDOM_RANGES.stereowidener.wet.max), enabled: selectedEffects.has('stereowidener') });
+  }
+
+  /**
+   * Get list of enabled effects in order
+   */
+  getEnabledEffects(): EffectId[] {
+    return this.order.filter(id => this.isEnabled(id));
+  }
+
+  /**
+   * Get list of disabled effects in order
+   */
+  getDisabledEffects(): EffectId[] {
+    return this.order.filter(id => !this.isEnabled(id));
   }
 
   reset(): void {
