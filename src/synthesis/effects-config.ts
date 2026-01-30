@@ -13,9 +13,12 @@ export interface GlucoseStats {
   volatility?: number; // Computed from readings
 }
 
-// Extended stats including computed volatility
+// Extended stats including all computed metrics for dramatic variation
 export interface GlucoseStatsWithVolatility extends GlucoseStats {
-  volatility: number;
+  volatility: number;      // Standard deviation
+  range: number;           // max - min glucose spread
+  coefficientOfVariation: number; // volatility / avg (normalized instability)
+  rateOfChange: number;    // Average reading-to-reading change
 }
 
 // Default effect order (musically logical signal chain)
@@ -138,12 +141,12 @@ export function getEffectDisplayName(effectId: EffectId): string {
   return names[effectId];
 }
 
-// Envelope ranges for data-driven ADSR values
+// Envelope ranges for data-driven ADSR values - WIDE ranges for dramatic variation
 export const ENVELOPE_RANGES = {
-  attack: { min: 0.005, max: 0.3 },   // 5ms to 300ms
-  decay: { min: 0.05, max: 0.5 },     // 50ms to 500ms
-  sustain: { min: 0.3, max: 0.9 },    // 30% to 90%
-  release: { min: 0.1, max: 1.0 },    // 100ms to 1s
+  attack: { min: 0.001, max: 0.8 },   // 1ms to 800ms (percussive to slow pad)
+  decay: { min: 0.01, max: 1.0 },     // 10ms to 1s
+  sustain: { min: 0.1, max: 1.0 },    // 10% to 100%
+  release: { min: 0.05, max: 2.0 },   // 50ms to 2s
 };
 
 // Effect categories for glucose-driven selection
@@ -162,20 +165,32 @@ export const EFFECT_CATEGORIES = {
   goodTIR: ['stereowidener', 'delay', 'pitchshift'] as EffectId[],
 };
 
-// Thresholds for categorizing glucose stats
+// Thresholds for categorizing glucose stats - tuned for more sensitivity
 export const GLUCOSE_THRESHOLDS = {
   volatility: {
-    high: 40,   // mg/dL standard deviation considered high
-    low: 20,    // mg/dL standard deviation considered low
+    high: 50,   // mg/dL standard deviation considered high
+    low: 15,    // mg/dL standard deviation considered low
   },
   average: {
-    high: 150,  // mg/dL average considered high
-    low: 100,   // mg/dL average considered low
-    target: 120, // Target average for normalization
+    high: 180,  // mg/dL average considered high
+    low: 80,    // mg/dL average considered low
+    target: 110, // Target average for normalization
   },
   timeInRange: {
-    good: 70,   // 70%+ is good
-    poor: 50,   // Below 50% is poor
+    good: 80,   // 80%+ is good
+    poor: 40,   // Below 40% is poor
+  },
+  range: {
+    high: 200,  // max-min spread considered high
+    low: 50,    // max-min spread considered low
+  },
+  coefficientOfVariation: {
+    high: 0.4,  // CV > 40% is very unstable
+    low: 0.15,  // CV < 15% is very stable
+  },
+  rateOfChange: {
+    high: 15,   // Average mg/dL change per reading considered high
+    low: 3,     // Average mg/dL change per reading considered low
   },
 };
 
@@ -218,7 +233,10 @@ export function computeRateOfChange(readings: GlucoseReading[]): number {
  */
 export function combineGlucoseStats(statsArray: GlucoseStatsWithVolatility[]): GlucoseStatsWithVolatility {
   if (statsArray.length === 0) {
-    return { min: 70, max: 180, avg: 120, timeInRange: 70, volatility: 25 };
+    return { 
+      min: 70, max: 180, avg: 120, timeInRange: 70, 
+      volatility: 25, range: 110, coefficientOfVariation: 0.2, rateOfChange: 5 
+    };
   }
   
   if (statsArray.length === 1) {
@@ -231,14 +249,24 @@ export function combineGlucoseStats(statsArray: GlucoseStatsWithVolatility[]): G
     avg: acc.avg + stats.avg,
     timeInRange: acc.timeInRange + stats.timeInRange,
     volatility: acc.volatility + stats.volatility,
-  }), { min: Infinity, max: -Infinity, avg: 0, timeInRange: 0, volatility: 0 });
+    range: acc.range + stats.range,
+    coefficientOfVariation: acc.coefficientOfVariation + stats.coefficientOfVariation,
+    rateOfChange: acc.rateOfChange + stats.rateOfChange,
+  }), { 
+    min: Infinity, max: -Infinity, avg: 0, timeInRange: 0, 
+    volatility: 0, range: 0, coefficientOfVariation: 0, rateOfChange: 0 
+  });
   
+  const count = statsArray.length;
   return {
     min: combined.min,
     max: combined.max,
-    avg: combined.avg / statsArray.length,
-    timeInRange: combined.timeInRange / statsArray.length,
-    volatility: combined.volatility / statsArray.length,
+    avg: combined.avg / count,
+    timeInRange: combined.timeInRange / count,
+    volatility: combined.volatility / count,
+    range: combined.range / count,
+    coefficientOfVariation: combined.coefficientOfVariation / count,
+    rateOfChange: combined.rateOfChange / count,
   };
 }
 
@@ -254,7 +282,7 @@ export function scaleInRange(factor: number, min: number, max: number): number {
  */
 export function normalizeGlucoseStat(
   value: number,
-  type: 'volatility' | 'average' | 'timeInRange'
+  type: 'volatility' | 'average' | 'timeInRange' | 'range' | 'coefficientOfVariation' | 'rateOfChange'
 ): number {
   const thresholds = GLUCOSE_THRESHOLDS;
   
@@ -279,8 +307,45 @@ export function normalizeGlucoseStat(
       // Normalize TIR: 0 = poor (0%), 1 = excellent (100%)
       return Math.min(1, Math.max(0, value / 100));
     
+    case 'range':
+      // Normalize glucose range (max-min spread)
+      return Math.min(1, Math.max(0, (value - thresholds.range.low) / 
+        (thresholds.range.high - thresholds.range.low)));
+    
+    case 'coefficientOfVariation':
+      // Normalize CV: 0 = very stable, 1 = very unstable
+      return Math.min(1, Math.max(0, (value - thresholds.coefficientOfVariation.low) / 
+        (thresholds.coefficientOfVariation.high - thresholds.coefficientOfVariation.low)));
+    
+    case 'rateOfChange':
+      // Normalize rate of change: 0 = slow changes, 1 = rapid changes
+      return Math.min(1, Math.max(0, (value - thresholds.rateOfChange.low) / 
+        (thresholds.rateOfChange.high - thresholds.rateOfChange.low)));
+    
     default:
       return 0.5;
   }
+}
+
+/**
+ * Amplify a normalized value to make it more extreme (push toward 0 or 1)
+ * exponent > 1 pushes toward extremes, < 1 pushes toward middle
+ */
+export function amplifyValue(value: number, exponent: number = 2): number {
+  // Apply S-curve to make values more extreme
+  if (value <= 0.5) {
+    return 0.5 * Math.pow(2 * value, exponent);
+  } else {
+    return 1 - 0.5 * Math.pow(2 * (1 - value), exponent);
+  }
+}
+
+/**
+ * Add controlled randomness to a value while keeping it in 0-1 range
+ * spread controls how much random variation (0.1 = ±10%)
+ */
+export function addRandomSpread(value: number, spread: number = 0.2): number {
+  const randomOffset = (Math.random() - 0.5) * 2 * spread;
+  return Math.min(1, Math.max(0, value + randomOffset));
 }
 

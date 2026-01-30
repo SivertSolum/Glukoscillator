@@ -8,9 +8,12 @@ import { formatDateForDisplay } from '../parser/libreview';
 import type { DailyGlucoseData, ParsedLibreViewData } from '../types';
 import {
   computeVolatility,
+  computeRateOfChange,
   combineGlucoseStats,
   normalizeGlucoseStat,
   scaleInRange,
+  amplifyValue,
+  addRandomSpread,
   ENVELOPE_RANGES,
   type GlucoseStatsWithVolatility,
 } from '../synthesis/effects-config';
@@ -185,7 +188,7 @@ export class OscillatorMixer {
   }
 
   /**
-   * Collect glucose stats with volatility from all selected oscillator days
+   * Collect glucose stats with all computed metrics from all selected oscillator days
    */
   private collectGlucoseStats(): GlucoseStatsWithVolatility[] {
     if (!this.data) return [];
@@ -198,8 +201,11 @@ export class OscillatorMixer {
       const dayData = this.data.days.get(date);
       if (!dayData) continue;
       
-      // Compute volatility from readings
+      // Compute all metrics from readings
       const volatility = computeVolatility(dayData.readings);
+      const rateOfChange = computeRateOfChange(dayData.readings);
+      const range = dayData.stats.max - dayData.stats.min;
+      const coefficientOfVariation = dayData.stats.avg > 0 ? volatility / dayData.stats.avg : 0;
       
       statsArray.push({
         min: dayData.stats.min,
@@ -207,6 +213,9 @@ export class OscillatorMixer {
         avg: dayData.stats.avg,
         timeInRange: dayData.stats.timeInRange,
         volatility,
+        range,
+        coefficientOfVariation,
+        rateOfChange,
       });
     }
     
@@ -215,40 +224,58 @@ export class OscillatorMixer {
 
   /**
    * Set envelope ADSR values based on glucose statistics
-   * - High volatility = short attack/decay (punchy, aggressive)
+   * Uses multiple metrics and amplification for dramatic variation:
+   * - High volatility/CV/rate = short attack/decay (punchy, aggressive)
    * - Low volatility = long attack/decay (smooth, pad-like)
-   * - High average = lower sustain (instability)
-   * - Good time-in-range = longer release (pleasant sustain)
+   * - High range = more extreme sustain
+   * - Poor time-in-range = shorter release
    */
   private setEnvelopeFromGlucose(stats: GlucoseStatsWithVolatility): void {
+    // Normalize all stats
     const volatilityNorm = normalizeGlucoseStat(stats.volatility, 'volatility');
     const avgNorm = normalizeGlucoseStat(stats.avg, 'average');
     const tirNorm = normalizeGlucoseStat(stats.timeInRange, 'timeInRange');
+    const rangeNorm = normalizeGlucoseStat(stats.range, 'range');
+    const cvNorm = normalizeGlucoseStat(stats.coefficientOfVariation, 'coefficientOfVariation');
+    const rocNorm = normalizeGlucoseStat(stats.rateOfChange, 'rateOfChange');
     
-    // High volatility = short attack (inverse relationship)
+    // Combine multiple instability metrics for attack/decay
+    // Higher values = more chaotic glucose = shorter, punchier envelope
+    const chaosMetric = (volatilityNorm + cvNorm + rocNorm) / 3;
+    const amplifiedChaos = amplifyValue(chaosMetric, 1.5); // Push toward extremes
+    
+    // High chaos = short attack (inverse relationship), add some randomness
+    const attackFactor = addRandomSpread(1 - amplifiedChaos, 0.15);
     const attack = scaleInRange(
-      1 - volatilityNorm,
+      attackFactor,
       ENVELOPE_RANGES.attack.min,
       ENVELOPE_RANGES.attack.max
     );
     
-    // High volatility = short decay (inverse relationship)
+    // High chaos = short decay, influenced by rate of change
+    const decayFactor = addRandomSpread(1 - amplifyValue((chaosMetric + rocNorm) / 2, 1.8), 0.15);
     const decay = scaleInRange(
-      1 - volatilityNorm,
+      decayFactor,
       ENVELOPE_RANGES.decay.min,
       ENVELOPE_RANGES.decay.max
     );
     
-    // High average glucose = lower sustain (represents instability)
+    // Sustain based on average and range - extreme glucose = lower sustain
+    // High range or high average = less stable sustained sound
+    const stabilityMetric = (1 - rangeNorm + 1 - avgNorm + tirNorm) / 3;
+    const sustainFactor = addRandomSpread(amplifyValue(stabilityMetric, 1.3), 0.2);
     const sustain = scaleInRange(
-      1 - avgNorm,
+      sustainFactor,
       ENVELOPE_RANGES.sustain.min,
       ENVELOPE_RANGES.sustain.max
     );
     
-    // Good time-in-range = longer release (pleasant, natural decay)
+    // Release based on time-in-range and volatility
+    // Good TIR + low volatility = longer, more pleasant release
+    const pleasantnessMetric = (tirNorm + (1 - volatilityNorm)) / 2;
+    const releaseFactor = addRandomSpread(amplifyValue(pleasantnessMetric, 1.5), 0.15);
     const release = scaleInRange(
-      tirNorm,
+      releaseFactor,
       ENVELOPE_RANGES.release.min,
       ENVELOPE_RANGES.release.max
     );

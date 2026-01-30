@@ -28,9 +28,10 @@ import {
   STORAGE_KEY, 
   RANDOM_RANGES,
   EFFECT_CATEGORIES,
-  GLUCOSE_THRESHOLDS,
   normalizeGlucoseStat,
   scaleInRange,
+  amplifyValue,
+  addRandomSpread,
   type GlucoseStatsWithVolatility,
 } from './effects-config';
 
@@ -517,6 +518,7 @@ export class EffectsChain {
   /**
    * Randomize effects based on glucose data statistics
    * Effects are selected and parameters scaled based on glucose characteristics
+   * Uses amplification and random spread for more dramatic variation
    */
   randomizeFromGlucose(stats: GlucoseStatsWithVolatility): void {
     // First, disable all effects
@@ -524,39 +526,49 @@ export class EffectsChain {
       this.setEnabled(effectId, false);
     }
 
-    // Normalize stats for use in parameter scaling
+    // Normalize all stats for use in parameter scaling
     const volatilityNorm = normalizeGlucoseStat(stats.volatility, 'volatility');
     const avgNorm = normalizeGlucoseStat(stats.avg, 'average');
     const tirNorm = normalizeGlucoseStat(stats.timeInRange, 'timeInRange');
+    const rangeNorm = normalizeGlucoseStat(stats.range, 'range');
+    const cvNorm = normalizeGlucoseStat(stats.coefficientOfVariation, 'coefficientOfVariation');
+    const rocNorm = normalizeGlucoseStat(stats.rateOfChange, 'rateOfChange');
     
-    // Select effects based on glucose characteristics
+    // Combine metrics for composite intensity values
+    const chaosMetric = amplifyValue((volatilityNorm + cvNorm + rocNorm) / 3, 1.5);
+    const instabilityMetric = amplifyValue((rangeNorm + cvNorm) / 2, 1.5);
+    const qualityMetric = amplifyValue((tirNorm + (1 - volatilityNorm)) / 2, 1.5);
+    
+    // Select effects based on glucose characteristics with more variety
     const selectedEffects = new Set<EffectId>();
     
-    // Volatility-based effects
-    if (stats.volatility >= GLUCOSE_THRESHOLDS.volatility.high) {
-      // High volatility: enable chaotic effects
+    // Always add some randomness to effect selection
+    const randomBonus = Math.random() * 0.3; // 0-30% random bonus
+    
+    // Volatility-based effects - use combined chaos metric
+    if (chaosMetric + randomBonus >= 0.6) {
+      // High chaos: enable chaotic effects
       EFFECT_CATEGORIES.highVolatility.forEach(e => selectedEffects.add(e));
-    } else if (stats.volatility <= GLUCOSE_THRESHOLDS.volatility.low) {
-      // Low volatility: enable smooth/ambient effects
+    } else if (chaosMetric + randomBonus <= 0.4) {
+      // Low chaos: enable smooth/ambient effects
       EFFECT_CATEGORIES.lowVolatility.forEach(e => selectedEffects.add(e));
     } else {
-      // Medium volatility: pick one from each category
-      const highVolIdx = Math.floor(volatilityNorm * EFFECT_CATEGORIES.highVolatility.length);
-      const lowVolIdx = Math.floor((1 - volatilityNorm) * EFFECT_CATEGORIES.lowVolatility.length);
-      selectedEffects.add(EFFECT_CATEGORIES.highVolatility[Math.min(highVolIdx, EFFECT_CATEGORIES.highVolatility.length - 1)]);
-      selectedEffects.add(EFFECT_CATEGORIES.lowVolatility[Math.min(lowVolIdx, EFFECT_CATEGORIES.lowVolatility.length - 1)]);
+      // Medium: randomly pick from both categories
+      selectedEffects.add(EFFECT_CATEGORIES.highVolatility[Math.floor(Math.random() * EFFECT_CATEGORIES.highVolatility.length)]);
+      selectedEffects.add(EFFECT_CATEGORIES.lowVolatility[Math.floor(Math.random() * EFFECT_CATEGORIES.lowVolatility.length)]);
     }
     
     // Average glucose-based effects
-    if (stats.avg >= GLUCOSE_THRESHOLDS.average.high) {
+    const avgMetric = amplifyValue(avgNorm, 1.3);
+    if (avgMetric + randomBonus >= 0.6) {
       // High average: modulation effects
       EFFECT_CATEGORIES.highAverage.forEach(e => selectedEffects.add(e));
-    } else if (stats.avg <= GLUCOSE_THRESHOLDS.average.low) {
+    } else if (avgMetric - randomBonus <= 0.35) {
       // Low average: stabilizing effects
       EFFECT_CATEGORIES.lowAverage.forEach(e => selectedEffects.add(e));
     } else {
-      // Medium: pick one based on where average falls
-      if (avgNorm > 0.5) {
+      // Pick randomly based on metric
+      if (Math.random() < avgMetric) {
         selectedEffects.add(EFFECT_CATEGORIES.highAverage[Math.floor(Math.random() * EFFECT_CATEGORIES.highAverage.length)]);
       } else {
         selectedEffects.add(EFFECT_CATEGORIES.lowAverage[Math.floor(Math.random() * EFFECT_CATEGORIES.lowAverage.length)]);
@@ -564,148 +576,155 @@ export class EffectsChain {
     }
     
     // Time-in-range based effects
-    if (stats.timeInRange >= GLUCOSE_THRESHOLDS.timeInRange.good) {
-      // Good TIR: spacious, pleasant effects
-      const goodEffects = EFFECT_CATEGORIES.goodTIR;
-      selectedEffects.add(goodEffects[Math.floor(tirNorm * goodEffects.length) % goodEffects.length]);
-    } else if (stats.timeInRange <= GLUCOSE_THRESHOLDS.timeInRange.poor) {
-      // Poor TIR: filtering effects
+    if (qualityMetric >= 0.65) {
+      // Good quality: spacious, pleasant effects
+      EFFECT_CATEGORIES.goodTIR.forEach(e => {
+        if (Math.random() < 0.7) selectedEffects.add(e); // 70% chance each
+      });
+    } else if (qualityMetric <= 0.35) {
+      // Poor quality: filtering effects
       EFFECT_CATEGORIES.poorTIR.forEach(e => selectedEffects.add(e));
     } else {
-      // Medium TIR: pick one based on TIR value
-      if (tirNorm > 0.5) {
-        selectedEffects.add(EFFECT_CATEGORIES.goodTIR[Math.floor(Math.random() * EFFECT_CATEGORIES.goodTIR.length)]);
-      } else {
+      // Mixed: pick from both
+      selectedEffects.add(EFFECT_CATEGORIES.goodTIR[Math.floor(Math.random() * EFFECT_CATEGORIES.goodTIR.length)]);
+      if (Math.random() < 0.5) {
         selectedEffects.add(EFFECT_CATEGORIES.poorTIR[Math.floor(Math.random() * EFFECT_CATEGORIES.poorTIR.length)]);
       }
     }
 
-    // Set parameters based on glucose stats
-    // Higher volatility = more intense effect parameters
-    // Higher average = faster modulation rates
-    // Higher TIR = wetter/more spacious
+    // Set parameters based on glucose stats with amplification and random spread
+    // This creates much more dramatic variation in effect parameters
     
-    // Compressor: low average = more compression
-    const compressorIntensity = 1 - avgNorm; // Lower average = more compression
+    // Compressor: instability metric = more compression
+    const compressorIntensity = addRandomSpread(amplifyValue(instabilityMetric, 1.5), 0.2);
     this.setCompressor({
       threshold: scaleInRange(compressorIntensity, RANDOM_RANGES.compressor.threshold.min, RANDOM_RANGES.compressor.threshold.max),
       ratio: scaleInRange(compressorIntensity, RANDOM_RANGES.compressor.ratio.min, RANDOM_RANGES.compressor.ratio.max),
       enabled: selectedEffects.has('compressor'),
     });
 
-    // EQ3: shape based on glucose range
-    const lowBoost = (1 - avgNorm) * 2 - 1; // Low glucose = boost lows
-    const highBoost = avgNorm * 2 - 1; // High glucose = boost highs
+    // EQ3: dramatic shape based on glucose metrics
+    const lowBoost = addRandomSpread((1 - avgNorm), 0.25);
+    const midBoost = addRandomSpread(0.5, 0.3); // Random mid variation
+    const highBoost = addRandomSpread(avgNorm, 0.25);
     this.setEQ3({
-      low: scaleInRange(0.5 + lowBoost * 0.5, RANDOM_RANGES.eq3.low.min, RANDOM_RANGES.eq3.low.max),
-      mid: scaleInRange(0.5, RANDOM_RANGES.eq3.mid.min, RANDOM_RANGES.eq3.mid.max),
-      high: scaleInRange(0.5 + highBoost * 0.5, RANDOM_RANGES.eq3.high.min, RANDOM_RANGES.eq3.high.max),
+      low: scaleInRange(lowBoost, RANDOM_RANGES.eq3.low.min, RANDOM_RANGES.eq3.low.max),
+      mid: scaleInRange(midBoost, RANDOM_RANGES.eq3.mid.min, RANDOM_RANGES.eq3.mid.max),
+      high: scaleInRange(highBoost, RANDOM_RANGES.eq3.high.min, RANDOM_RANGES.eq3.high.max),
       enabled: selectedEffects.has('eq3'),
     });
 
-    // BitCrusher: high volatility = lower bits (more crushed)
+    // BitCrusher: high chaos = lower bits (more crushed), dramatic wet
+    const crusherIntensity = addRandomSpread(amplifyValue(chaosMetric, 2), 0.15);
     this.setBitCrusher({
-      bits: Math.round(scaleInRange(1 - volatilityNorm, RANDOM_RANGES.bitcrusher.bits.min, RANDOM_RANGES.bitcrusher.bits.max)),
-      wet: scaleInRange(volatilityNorm, RANDOM_RANGES.bitcrusher.wet.min, RANDOM_RANGES.bitcrusher.wet.max),
+      bits: Math.round(scaleInRange(1 - crusherIntensity, RANDOM_RANGES.bitcrusher.bits.min, RANDOM_RANGES.bitcrusher.bits.max)),
+      wet: scaleInRange(crusherIntensity, RANDOM_RANGES.bitcrusher.wet.min, RANDOM_RANGES.bitcrusher.wet.max),
       enabled: selectedEffects.has('bitcrusher'),
     });
 
-    // Distortion: high volatility = more distortion
+    // Distortion: high chaos = more distortion
+    const distortionIntensity = addRandomSpread(amplifyValue(chaosMetric, 1.8), 0.2);
     this.setDistortion({
-      amount: scaleInRange(volatilityNorm, RANDOM_RANGES.distortion.amount.min, RANDOM_RANGES.distortion.amount.max),
-      wet: scaleInRange(volatilityNorm * 0.8, RANDOM_RANGES.distortion.wet.min, RANDOM_RANGES.distortion.wet.max),
+      amount: scaleInRange(distortionIntensity, RANDOM_RANGES.distortion.amount.min, RANDOM_RANGES.distortion.amount.max),
+      wet: scaleInRange(distortionIntensity, RANDOM_RANGES.distortion.wet.min, RANDOM_RANGES.distortion.wet.max),
       enabled: selectedEffects.has('distortion'),
     });
 
-    // AutoWah: poor TIR = more aggressive filtering
-    const wahIntensity = 1 - tirNorm;
+    // AutoWah: poor quality + high chaos = aggressive filtering
+    const wahIntensity = addRandomSpread(amplifyValue((1 - qualityMetric + chaosMetric) / 2, 1.5), 0.2);
     this.setAutoWah({
       baseFrequency: scaleInRange(wahIntensity, RANDOM_RANGES.autowah.baseFrequency.min, RANDOM_RANGES.autowah.baseFrequency.max),
       octaves: Math.round(scaleInRange(wahIntensity, RANDOM_RANGES.autowah.octaves.min, RANDOM_RANGES.autowah.octaves.max)),
-      wet: scaleInRange(wahIntensity * 0.8, RANDOM_RANGES.autowah.wet.min, RANDOM_RANGES.autowah.wet.max),
+      wet: scaleInRange(wahIntensity, RANDOM_RANGES.autowah.wet.min, RANDOM_RANGES.autowah.wet.max),
       enabled: selectedEffects.has('autowah'),
     });
 
-    // AutoFilter: poor TIR = faster, deeper filtering
+    // AutoFilter: based on rate of change - rapid changes = faster filter
+    const filterIntensity = addRandomSpread(amplifyValue(rocNorm, 1.8), 0.2);
     this.setAutoFilter({
-      frequency: scaleInRange(1 - tirNorm, RANDOM_RANGES.autofilter.frequency.min, RANDOM_RANGES.autofilter.frequency.max),
-      depth: scaleInRange(1 - tirNorm, RANDOM_RANGES.autofilter.depth.min, RANDOM_RANGES.autofilter.depth.max),
-      octaves: Math.round(scaleInRange(1 - tirNorm, RANDOM_RANGES.autofilter.octaves.min, RANDOM_RANGES.autofilter.octaves.max)),
-      wet: scaleInRange((1 - tirNorm) * 0.8, RANDOM_RANGES.autofilter.wet.min, RANDOM_RANGES.autofilter.wet.max),
+      frequency: scaleInRange(filterIntensity, RANDOM_RANGES.autofilter.frequency.min, RANDOM_RANGES.autofilter.frequency.max),
+      depth: scaleInRange(filterIntensity, RANDOM_RANGES.autofilter.depth.min, RANDOM_RANGES.autofilter.depth.max),
+      octaves: Math.round(scaleInRange(filterIntensity, RANDOM_RANGES.autofilter.octaves.min, RANDOM_RANGES.autofilter.octaves.max)),
+      wet: scaleInRange(filterIntensity, RANDOM_RANGES.autofilter.wet.min, RANDOM_RANGES.autofilter.wet.max),
       enabled: selectedEffects.has('autofilter'),
     });
 
-    // Phaser: low volatility = slow, subtle phasing
-    const phaserIntensity = 1 - volatilityNorm;
+    // Phaser: quality metric = intensity (good quality = more phaser)
+    const phaserIntensity = addRandomSpread(amplifyValue(qualityMetric, 1.5), 0.2);
     this.setPhaser({
-      frequency: scaleInRange(phaserIntensity * 0.5, RANDOM_RANGES.phaser.frequency.min, RANDOM_RANGES.phaser.frequency.max),
+      frequency: scaleInRange(phaserIntensity, RANDOM_RANGES.phaser.frequency.min, RANDOM_RANGES.phaser.frequency.max),
       octaves: Math.round(scaleInRange(phaserIntensity, RANDOM_RANGES.phaser.octaves.min, RANDOM_RANGES.phaser.octaves.max)),
-      wet: scaleInRange(phaserIntensity * 0.7, RANDOM_RANGES.phaser.wet.min, RANDOM_RANGES.phaser.wet.max),
+      wet: scaleInRange(phaserIntensity, RANDOM_RANGES.phaser.wet.min, RANDOM_RANGES.phaser.wet.max),
       enabled: selectedEffects.has('phaser'),
     });
 
-    // Chorus: low volatility = lush chorus
-    const chorusIntensity = 1 - volatilityNorm;
+    // Chorus: stability = lush chorus
+    const chorusIntensity = addRandomSpread(amplifyValue(1 - chaosMetric, 1.5), 0.2);
     this.setChorus({
-      frequency: scaleInRange(chorusIntensity * 0.5, RANDOM_RANGES.chorus.frequency.min, RANDOM_RANGES.chorus.frequency.max),
+      frequency: scaleInRange(chorusIntensity, RANDOM_RANGES.chorus.frequency.min, RANDOM_RANGES.chorus.frequency.max),
       depth: scaleInRange(chorusIntensity, RANDOM_RANGES.chorus.depth.min, RANDOM_RANGES.chorus.depth.max),
-      wet: scaleInRange(chorusIntensity * 0.6, RANDOM_RANGES.chorus.wet.min, RANDOM_RANGES.chorus.wet.max),
+      wet: scaleInRange(chorusIntensity, RANDOM_RANGES.chorus.wet.min, RANDOM_RANGES.chorus.wet.max),
       enabled: selectedEffects.has('chorus'),
     });
 
-    // Tremolo: high average = faster tremolo
+    // Tremolo: high average + rate of change = faster, deeper tremolo
+    const tremoloIntensity = addRandomSpread(amplifyValue((avgMetric + rocNorm) / 2, 1.8), 0.2);
     this.setTremolo({
-      frequency: scaleInRange(avgNorm, RANDOM_RANGES.tremolo.frequency.min, RANDOM_RANGES.tremolo.frequency.max),
-      depth: scaleInRange(avgNorm, RANDOM_RANGES.tremolo.depth.min, RANDOM_RANGES.tremolo.depth.max),
-      wet: scaleInRange(avgNorm * 0.8, RANDOM_RANGES.tremolo.wet.min, RANDOM_RANGES.tremolo.wet.max),
+      frequency: scaleInRange(tremoloIntensity, RANDOM_RANGES.tremolo.frequency.min, RANDOM_RANGES.tremolo.frequency.max),
+      depth: scaleInRange(tremoloIntensity, RANDOM_RANGES.tremolo.depth.min, RANDOM_RANGES.tremolo.depth.max),
+      wet: scaleInRange(tremoloIntensity, RANDOM_RANGES.tremolo.wet.min, RANDOM_RANGES.tremolo.wet.max),
       enabled: selectedEffects.has('tremolo'),
     });
 
-    // Vibrato: high average = faster vibrato
+    // Vibrato: CV metric = faster, more intense vibrato
+    const vibratoIntensity = addRandomSpread(amplifyValue(cvNorm, 1.8), 0.2);
     this.setVibrato({
-      frequency: scaleInRange(avgNorm, RANDOM_RANGES.vibrato.frequency.min, RANDOM_RANGES.vibrato.frequency.max),
-      depth: scaleInRange(avgNorm * 0.8, RANDOM_RANGES.vibrato.depth.min, RANDOM_RANGES.vibrato.depth.max),
-      wet: scaleInRange(avgNorm * 0.7, RANDOM_RANGES.vibrato.wet.min, RANDOM_RANGES.vibrato.wet.max),
+      frequency: scaleInRange(vibratoIntensity, RANDOM_RANGES.vibrato.frequency.min, RANDOM_RANGES.vibrato.frequency.max),
+      depth: scaleInRange(vibratoIntensity, RANDOM_RANGES.vibrato.depth.min, RANDOM_RANGES.vibrato.depth.max),
+      wet: scaleInRange(vibratoIntensity, RANDOM_RANGES.vibrato.wet.min, RANDOM_RANGES.vibrato.wet.max),
       enabled: selectedEffects.has('vibrato'),
     });
 
-    // FreqShift: high volatility = more dramatic shift
-    const shiftAmount = (volatilityNorm - 0.5) * 2; // -1 to 1
+    // FreqShift: chaos metric = more dramatic shift with random direction
+    const shiftDirection = Math.random() > 0.5 ? 1 : -1;
+    const shiftIntensity = addRandomSpread(amplifyValue(chaosMetric, 2), 0.25);
     this.setFreqShift({
-      frequency: scaleInRange(0.5 + shiftAmount * 0.5, RANDOM_RANGES.freqshift.frequency.min, RANDOM_RANGES.freqshift.frequency.max),
-      wet: scaleInRange(volatilityNorm * 0.6, RANDOM_RANGES.freqshift.wet.min, RANDOM_RANGES.freqshift.wet.max),
+      frequency: shiftDirection * scaleInRange(shiftIntensity, 0, RANDOM_RANGES.freqshift.frequency.max),
+      wet: scaleInRange(shiftIntensity, RANDOM_RANGES.freqshift.wet.min, RANDOM_RANGES.freqshift.wet.max),
       enabled: selectedEffects.has('freqshift'),
     });
 
-    // PitchShift: based on glucose range deviation
+    // PitchShift: range metric determines amount, average determines direction
     const pitchDirection = avgNorm > 0.5 ? 1 : -1;
-    const pitchAmount = Math.abs(avgNorm - 0.5) * 2;
+    const pitchIntensity = addRandomSpread(amplifyValue(rangeNorm, 1.8), 0.2);
     this.setPitchShift({
-      pitch: Math.round(pitchDirection * scaleInRange(pitchAmount, 0, RANDOM_RANGES.pitchshift.pitch.max)),
-      wet: scaleInRange(tirNorm * 0.8, RANDOM_RANGES.pitchshift.wet.min, RANDOM_RANGES.pitchshift.wet.max),
+      pitch: Math.round(pitchDirection * scaleInRange(pitchIntensity, 0, RANDOM_RANGES.pitchshift.pitch.max)),
+      wet: scaleInRange(addRandomSpread(qualityMetric, 0.2), RANDOM_RANGES.pitchshift.wet.min, RANDOM_RANGES.pitchshift.wet.max),
       enabled: selectedEffects.has('pitchshift'),
     });
 
-    // Delay: good TIR = longer, more feedback
+    // Delay: quality metric = longer, more feedback
+    const delayIntensity = addRandomSpread(amplifyValue(qualityMetric, 1.5), 0.2);
     this.setDelay({
-      time: scaleInRange(tirNorm, RANDOM_RANGES.delay.time.min, RANDOM_RANGES.delay.time.max),
-      feedback: scaleInRange(tirNorm * 0.8, RANDOM_RANGES.delay.feedback.min, RANDOM_RANGES.delay.feedback.max),
-      wet: scaleInRange(tirNorm * 0.5, RANDOM_RANGES.delay.wet.min, RANDOM_RANGES.delay.wet.max),
+      time: scaleInRange(delayIntensity, RANDOM_RANGES.delay.time.min, RANDOM_RANGES.delay.time.max),
+      feedback: scaleInRange(delayIntensity, RANDOM_RANGES.delay.feedback.min, RANDOM_RANGES.delay.feedback.max),
+      wet: scaleInRange(delayIntensity, RANDOM_RANGES.delay.wet.min, RANDOM_RANGES.delay.wet.max),
       enabled: selectedEffects.has('delay'),
     });
 
-    // Reverb: low volatility + good TIR = lush reverb
-    const reverbIntensity = (1 - volatilityNorm) * tirNorm;
+    // Reverb: stability = lush reverb
+    const reverbIntensity = addRandomSpread(amplifyValue((1 - chaosMetric + qualityMetric) / 2, 1.5), 0.2);
     this.setReverb({
       decay: scaleInRange(reverbIntensity, RANDOM_RANGES.reverb.decay.min, RANDOM_RANGES.reverb.decay.max),
-      wet: scaleInRange(reverbIntensity * 0.5, RANDOM_RANGES.reverb.wet.min, RANDOM_RANGES.reverb.wet.max),
+      wet: scaleInRange(reverbIntensity, RANDOM_RANGES.reverb.wet.min, RANDOM_RANGES.reverb.wet.max),
       enabled: selectedEffects.has('reverb'),
     });
 
-    // StereoWidener: good TIR = wider stereo
+    // StereoWidener: quality + stability = wider stereo
+    const widthIntensity = addRandomSpread(amplifyValue(qualityMetric, 1.5), 0.2);
     this.setStereoWidener({
-      width: scaleInRange(tirNorm, RANDOM_RANGES.stereowidener.width.min, RANDOM_RANGES.stereowidener.width.max),
-      wet: scaleInRange(tirNorm, RANDOM_RANGES.stereowidener.wet.min, RANDOM_RANGES.stereowidener.wet.max),
+      width: scaleInRange(widthIntensity, RANDOM_RANGES.stereowidener.width.min, RANDOM_RANGES.stereowidener.width.max),
+      wet: scaleInRange(widthIntensity, RANDOM_RANGES.stereowidener.wet.min, RANDOM_RANGES.stereowidener.wet.max),
       enabled: selectedEffects.has('stereowidener'),
     });
   }
