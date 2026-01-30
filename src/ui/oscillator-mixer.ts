@@ -532,9 +532,13 @@ export class OscillatorMixer {
     `;
     this.container.appendChild(header);
 
-    // Randomize button handler
+    // Randomize button handler - stop propagation to prevent oscillator slot activation
     const randomizeBtn = header.querySelector('#randomize-btn');
-    randomizeBtn?.addEventListener('click', () => this.randomize());
+    randomizeBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      this.randomize();
+    });
 
     // Oscillator slots
     const slotsContainer = document.createElement('div');
