@@ -2,13 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Glukoscillator - Glucose Wavetable Synthesizer</title>
     <meta name="description" content="Transform your glucose data into music. Each day becomes a unique playable waveform." />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎹</text></svg>" />
   </head>
   <body>
-    <div class="app-container">
+    <!-- Desktop View (unchanged layout) -->
+    <div class="app-container desktop-view">
       <!-- Header -->
       <header class="header">
         <div class="logo">
@@ -54,6 +55,70 @@
       <section class="keyboard-section">
         <div id="piano-keyboard" class="piano-keyboard"></div>
       </section>
+    </div>
+
+    <!-- Mobile View (tabbed layout) -->
+    <div class="mobile-view">
+      <!-- Mobile Header -->
+      <header class="mobile-header">
+        <div class="mobile-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+          </svg>
+        </div>
+        <button id="mobile-file-loader-btn" class="mobile-file-btn" title="Load Data">
+          <span class="file-icon">💾</span>
+          <span class="file-label" id="mobile-file-label">Load</span>
+          <input type="file" id="mobile-file-input" accept=".csv" />
+        </button>
+      </header>
+
+      <!-- Tab Content Panels -->
+      <div class="mobile-tab-content">
+        <!-- Keyboard Tab Panel -->
+        <div class="mobile-tab-panel active" data-tab="keyboard">
+          <div id="mobile-piano-keyboard" class="mobile-piano-keyboard"></div>
+        </div>
+
+        <!-- Oscillators Tab Panel -->
+        <div class="mobile-tab-panel" data-tab="oscillators">
+          <div class="mobile-oscillators-container">
+            <div id="mobile-oscillator-mixer"></div>
+            <div class="mobile-controls-row">
+              <div id="mobile-synth-controls" class="mobile-synth-controls"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Effects Tab Panel -->
+        <div class="mobile-tab-panel" data-tab="effects">
+          <div id="mobile-effects-panel" class="mobile-effects-container"></div>
+        </div>
+      </div>
+
+      <!-- Bottom Tab Navigation -->
+      <nav class="mobile-tab-nav">
+        <button class="mobile-tab-btn active" data-tab="keyboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="6" width="20" height="14" rx="2"/>
+            <path d="M7 6v8M12 6v8M17 6v8"/>
+          </svg>
+          <span>Keys</span>
+        </button>
+        <button class="mobile-tab-btn" data-tab="oscillators">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2 12h4l2-8 4 16 4-16 2 8h4"/>
+          </svg>
+          <span>Osc</span>
+        </button>
+        <button class="mobile-tab-btn" data-tab="effects">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+          </svg>
+          <span>FX</span>
+        </button>
+      </nav>
     </div>
 
     <!-- Start Audio Overlay -->

@@ -1,7 +1,7 @@
 /* Glukoscillator - Responsive Styles */
 
 /* =====================================================
-   RESPONSIVE ADJUSTMENTS
+   DESKTOP RESPONSIVE ADJUSTMENTS
    ===================================================== */
 @media (max-width: 1200px) {
   .adsr-controls { gap: var(--spacing-md); }
@@ -34,52 +34,52 @@
 }
 
 @media (max-width: 600px) {
-  .app-container {
+  .app-container.desktop-view {
     padding: var(--spacing-sm);
     gap: var(--spacing-sm);
   }
   
-  .header {
+  .desktop-view .header {
     flex-direction: column;
     gap: var(--spacing-sm);
     padding: var(--spacing-sm) var(--spacing-md);
   }
   
-  .logo-text {
+  .desktop-view .logo-text {
     font-size: 1.2rem;
   }
   
-  .oscillator-slots {
+  .desktop-view .oscillator-slots {
     grid-template-columns: 1fr;
   }
   
-  .oscillator-slot {
+  .desktop-view .oscillator-slot {
     flex-direction: row;
     justify-content: space-between;
   }
   
-  .adsr-controls {
+  .desktop-view .adsr-controls {
     flex-wrap: wrap;
     justify-content: center;
   }
   
-  .piano-keyboard {
+  .desktop-view .piano-keyboard {
     height: 160px;
   }
   
-  .white-key {
+  .desktop-view .white-key {
     width: 36px;
     height: 150px;
   }
   
-  .black-key {
+  .desktop-view .black-key {
     width: 24px;
     height: 100px;
     margin-left: -12px;
     margin-right: -12px;
   }
   
-  .effect-module {
+  .desktop-view .effect-module {
     width: 120px;
   }
 }
@@ -107,6 +107,557 @@
   .footswitch {
     width: 44px;
     height: 44px;
+  }
+}
+
+/* =====================================================
+   MOBILE VIEW - DETECTION & VISIBILITY
+   ===================================================== */
+
+/* Default: Show desktop, hide mobile */
+.desktop-view {
+  display: flex;
+}
+
+.mobile-view {
+  display: none;
+}
+
+/* Mobile detection: max-width 768px AND touch device */
+@media (max-width: 768px) and (pointer: coarse) {
+  .desktop-view {
+    display: none !important;
+  }
+  
+  .mobile-view {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    width: 100vw;
+    overflow: hidden;
+    background: var(--bg-primary);
+    position: fixed;
+    top: 0;
+    left: 0;
+  }
+}
+
+/* =====================================================
+   MOBILE VIEW - PORTRAIT AUTO-ROTATION
+   ===================================================== */
+@media (max-width: 768px) and (pointer: coarse) and (orientation: portrait) {
+  .mobile-view {
+    transform: rotate(90deg);
+    transform-origin: top left;
+    width: 100vh;
+    height: 100vw;
+    position: fixed;
+    top: 0;
+    left: 100%;
+  }
+}
+
+/* =====================================================
+   MOBILE HEADER
+   ===================================================== */
+.mobile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: linear-gradient(180deg, var(--metal-mid) 0%, var(--metal-dark) 100%);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.3);
+  flex-shrink: 0;
+  height: 44px;
+  min-height: 44px;
+}
+
+.mobile-logo {
+  width: 28px;
+  height: 28px;
+  background: linear-gradient(145deg, var(--accent-primary), #c48a5c);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 
+    0 2px 8px rgba(232, 168, 124, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.mobile-logo svg {
+  width: 16px;
+  height: 16px;
+  stroke: var(--bg-primary);
+}
+
+.mobile-file-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  background: linear-gradient(180deg, var(--metal-light) 0%, var(--metal-mid) 100%);
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  position: relative;
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.mobile-file-btn .file-icon {
+  font-size: 0.9rem;
+}
+
+.mobile-file-btn input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mobile-file-btn.loaded {
+  border-color: var(--accent-glucose-normal);
+  color: var(--accent-glucose-normal);
+}
+
+/* =====================================================
+   MOBILE TAB CONTENT
+   ===================================================== */
+.mobile-tab-content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.mobile-tab-panel {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  padding: var(--spacing-xs);
+}
+
+.mobile-tab-panel.active {
+  display: flex;
+}
+
+/* =====================================================
+   MOBILE TAB NAVIGATION
+   ===================================================== */
+.mobile-tab-nav {
+  display: flex;
+  background: linear-gradient(180deg, var(--metal-mid) 0%, var(--metal-dark) 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  flex-shrink: 0;
+  height: 56px;
+  min-height: 56px;
+}
+
+.mobile-tab-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: var(--spacing-xs);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: 44px;
+}
+
+.mobile-tab-btn svg {
+  width: 22px;
+  height: 22px;
+  transition: all 0.2s ease;
+}
+
+.mobile-tab-btn span {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mobile-tab-btn:hover {
+  color: var(--text-secondary);
+}
+
+.mobile-tab-btn.active {
+  color: var(--accent-primary);
+  background: linear-gradient(180deg, rgba(232, 168, 124, 0.1) 0%, transparent 100%);
+}
+
+.mobile-tab-btn.active svg {
+  filter: drop-shadow(0 0 6px var(--accent-primary));
+}
+
+/* =====================================================
+   MOBILE KEYBOARD TAB
+   ===================================================== */
+.mobile-piano-keyboard {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(180deg, #1a1815 0%, #0f0d0b 100%);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 4px 20px rgba(0, 0, 0, 0.5);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: var(--spacing-xs);
+  user-select: none;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile keyboard specific key sizes */
+.mobile-piano-keyboard .piano-key {
+  flex-shrink: 0;
+}
+
+.mobile-piano-keyboard .white-key {
+  width: 48px;
+  min-width: 48px;
+  height: calc(100% - 10px);
+  max-height: 160px;
+}
+
+.mobile-piano-keyboard .black-key {
+  width: 32px;
+  min-width: 32px;
+  height: calc(65% - 5px);
+  max-height: 100px;
+  margin-left: -16px;
+  margin-right: -16px;
+}
+
+/* Hide key labels on mobile for cleaner look */
+.mobile-piano-keyboard .key-shortcut {
+  display: none;
+}
+
+.mobile-piano-keyboard .key-note {
+  font-size: 0.6rem;
+}
+
+/* =====================================================
+   MOBILE OSCILLATORS TAB
+   ===================================================== */
+.mobile-oscillators-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: var(--spacing-sm);
+  overflow-y: auto;
+}
+
+#mobile-oscillator-mixer {
+  flex-shrink: 0;
+}
+
+#mobile-oscillator-mixer .oscillator-mixer {
+  background: linear-gradient(180deg, var(--metal-mid) 0%, var(--metal-dark) 100%);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--metal-dark);
+  padding: var(--spacing-sm);
+}
+
+#mobile-oscillator-mixer .oscillator-slots {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+#mobile-oscillator-mixer .oscillator-slot {
+  flex: 1;
+  min-width: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+#mobile-oscillator-mixer .osc-waveform {
+  width: 50px;
+  height: 28px;
+}
+
+#mobile-oscillator-mixer .mixer-header {
+  padding-bottom: var(--spacing-xs);
+  margin-bottom: var(--spacing-xs);
+}
+
+#mobile-oscillator-mixer .mixer-header h3 {
+  font-size: 0.65rem;
+}
+
+#mobile-oscillator-mixer .randomize-btn {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 0.6rem;
+}
+
+.mobile-controls-row {
+  flex-shrink: 0;
+}
+
+.mobile-synth-controls {
+  background: linear-gradient(180deg, var(--metal-mid) 0%, var(--metal-dark) 100%);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--metal-dark);
+  padding: var(--spacing-sm);
+}
+
+.mobile-synth-controls .controls-faceplate {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.mobile-synth-controls .knob-wrapper {
+  min-width: 36px;
+}
+
+.mobile-synth-controls .knob-container {
+  width: 34px;
+  height: 34px;
+}
+
+.mobile-synth-controls .knob {
+  width: 22px;
+  height: 22px;
+}
+
+.mobile-synth-controls .knob-label {
+  font-size: 0.5rem;
+}
+
+.mobile-synth-controls .knob-value {
+  font-size: 0.45rem;
+  min-width: 32px;
+}
+
+.mobile-synth-controls .section-label {
+  margin-bottom: 1px;
+}
+
+.mobile-synth-controls .label-text {
+  font-size: 0.55rem;
+}
+
+/* =====================================================
+   MOBILE EFFECTS TAB
+   ===================================================== */
+.mobile-effects-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-effects-container .effects-rack {
+  flex: 1;
+  min-height: 0;
+  border-radius: var(--radius-md);
+}
+
+.mobile-effects-container .effects-pedalboard {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: var(--spacing-sm);
+  gap: var(--spacing-sm);
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-effects-container .effect-module {
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.mobile-effects-container .module-faceplate {
+  padding: var(--spacing-xs);
+}
+
+.mobile-effects-container .module-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.mobile-effects-container .module-name {
+  font-size: 0.5rem;
+}
+
+.mobile-effects-container .mini-knob {
+  width: 22px;
+  height: 22px;
+}
+
+.mobile-effects-container .mini-knob-container {
+  width: 26px;
+  height: 26px;
+}
+
+.mobile-effects-container .mini-knob-label {
+  font-size: 0.45rem;
+}
+
+.mobile-effects-container .footswitch {
+  width: 26px;
+  height: 26px;
+}
+
+.mobile-effects-container .rack-header {
+  padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+.mobile-effects-container .rack-label {
+  font-size: 0.65rem;
+}
+
+.mobile-effects-container .add-effect-dropdown {
+  margin-top: var(--spacing-xs);
+}
+
+.mobile-effects-container .add-effect-header {
+  padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+.mobile-effects-container .add-effect-label {
+  font-size: 0.6rem;
+}
+
+/* =====================================================
+   MOBILE TOUCH OPTIMIZATIONS
+   ===================================================== */
+@media (max-width: 768px) and (pointer: coarse) {
+  /* Prevent text selection on mobile */
+  .mobile-view {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* Ensure touch targets are at least 44px */
+  .mobile-view button,
+  .mobile-view .piano-key,
+  .mobile-view .footswitch,
+  .mobile-view .knob,
+  .mobile-view .mini-knob {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Smooth scrolling for effects pedalboard */
+  .mobile-effects-container .effects-pedalboard {
+    scroll-snap-type: x proximity;
+    scroll-behavior: smooth;
+  }
+
+  .mobile-effects-container .effect-module {
+    scroll-snap-align: start;
+  }
+
+  /* Touch-friendly oscillator slots */
+  #mobile-oscillator-mixer .oscillator-slot {
+    min-height: 80px;
+    touch-action: manipulation;
+  }
+
+  /* Dropdown panels for mobile */
+  #mobile-oscillator-mixer .osc-dropdown-panel {
+    max-height: none;
+    position: fixed;
+    top: auto;
+    bottom: 60px;
+    left: 8px;
+    right: 8px;
+    z-index: 500;
+  }
+
+  #mobile-oscillator-mixer .oscillator-slot.dropdown-open .osc-dropdown-panel {
+    max-height: 50vh;
+  }
+
+  /* Larger day items for touch */
+  #mobile-oscillator-mixer .osc-day-item {
+    padding: var(--spacing-sm) var(--spacing-md);
+    min-height: 44px;
+  }
+
+  /* Piano keys touch optimization */
+  .mobile-piano-keyboard .piano-key {
+    touch-action: manipulation;
+  }
+
+  /* Faster visual feedback */
+  .mobile-piano-keyboard .white-key:active,
+  .mobile-piano-keyboard .white-key.active {
+    transition: all 0.05s ease;
+  }
+
+  .mobile-piano-keyboard .black-key:active,
+  .mobile-piano-keyboard .black-key.active {
+    transition: all 0.05s ease;
+  }
+}
+
+/* =====================================================
+   MOBILE OSCILLATOR DROPDOWN BACKDROP
+   ===================================================== */
+.mobile-dropdown-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 400;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.mobile-dropdown-backdrop.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* =====================================================
+   MOBILE START OVERLAY ADJUSTMENTS
+   ===================================================== */
+@media (max-width: 768px) and (pointer: coarse) {
+  .start-overlay {
+    z-index: 1000;
+  }
+  
+  #start-button {
+    padding: var(--spacing-md) var(--spacing-lg);
+    font-size: 1.1rem;
+  }
+  
+  .start-instructions {
+    font-size: 0.85rem;
+    padding: 0 var(--spacing-md);
+  }
+}
+
+/* Portrait mode adjustments for overlay */
+@media (max-width: 768px) and (pointer: coarse) and (orientation: portrait) {
+  .start-overlay {
+    transform: rotate(90deg);
+    transform-origin: top left;
+    width: 100vh;
+    height: 100vw;
+    position: fixed;
+    top: 0;
+    left: 100%;
   }
 }
 

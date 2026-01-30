@@ -20,16 +20,36 @@ let oscillatorMixer: OscillatorMixer | null = null;
 let synthControls: SynthControls | null = null;
 let isAudioStarted = false;
 
+// Mobile-specific state
+let mobilePianoKeyboard: PianoKeyboard | null = null;
+let mobileOscillatorMixer: OscillatorMixer | null = null;
+let mobileSynthControls: SynthControls | null = null;
+let isMobile = false;
+
+/**
+ * Check if we're on a mobile device
+ */
+function detectMobile(): boolean {
+  const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  const isSmallScreen = window.innerWidth <= 768 || window.innerHeight <= 768;
+  return isTouchDevice && isSmallScreen;
+}
+
 /**
  * Initialize the application
  */
 async function init(): Promise<void> {
   console.log('Glukoscillator initializing...');
 
-  // Set up UI components
+  // Detect mobile
+  isMobile = detectMobile();
+  console.log(`Device type: ${isMobile ? 'mobile' : 'desktop'}`);
+
+  // Set up shared components
   setupFileLoader();
   setupStartButton();
-  
+
+  // Initialize desktop UI components
   pianoKeyboard = createPianoKeyboard('piano-keyboard');
   oscillatorMixer = createOscillatorMixer('oscillator-mixer');
   createEffectsPanel('effects-panel');
@@ -43,12 +63,19 @@ async function init(): Promise<void> {
   oscillatorMixer.onRandomize(() => {
     // Sync envelope knobs after randomization
     synthControls?.syncFromSynth();
+    mobileSynthControls?.syncFromSynth();
   });
+
+  // Initialize mobile UI components
+  if (isMobile) {
+    setupMobileUI();
+  }
 
   // Set up keyboard handler callbacks for visual feedback
   const keyboardHandler = getKeyboardHandler();
   keyboardHandler.onNote((note, isNoteOn) => {
     pianoKeyboard?.setKeyActive(note, isNoteOn);
+    mobilePianoKeyboard?.setKeyActive(note, isNoteOn);
   });
 
   // Set up MIDI if supported
@@ -56,6 +83,7 @@ async function init(): Promise<void> {
     const midiHandler = getMIDIHandler();
     midiHandler.onNote((note, isNoteOn) => {
       pianoKeyboard?.setKeyActive(note, isNoteOn);
+      mobilePianoKeyboard?.setKeyActive(note, isNoteOn);
     });
     midiHandler.onConnection((connected, _deviceName) => {
       updateMIDIStatusIndicator(connected);
@@ -76,6 +104,88 @@ async function init(): Promise<void> {
   await loadSampleData();
 
   console.log('Glukoscillator ready!');
+}
+
+/**
+ * Set up mobile-specific UI
+ */
+function setupMobileUI(): void {
+  console.log('Setting up mobile UI...');
+
+  // Initialize mobile piano keyboard
+  mobilePianoKeyboard = createPianoKeyboard('mobile-piano-keyboard');
+
+  // Initialize mobile oscillator mixer
+  mobileOscillatorMixer = createOscillatorMixer('mobile-oscillator-mixer');
+  
+  // Initialize mobile effects panel
+  createEffectsPanel('mobile-effects-panel');
+
+  // Initialize mobile synth controls
+  mobileSynthControls = createSynthControls('mobile-synth-controls');
+
+  // Set up mobile oscillator mixer callbacks
+  mobileOscillatorMixer.onChange((_oscIndex, _dayData) => {
+    // Sync with desktop mixer
+  });
+
+  mobileOscillatorMixer.onRandomize(() => {
+    synthControls?.syncFromSynth();
+    mobileSynthControls?.syncFromSynth();
+  });
+
+  // Set up mobile tab navigation
+  setupMobileTabNavigation();
+
+  // Set up mobile file loader
+  setupMobileFileLoader();
+
+  console.log('Mobile UI ready');
+}
+
+/**
+ * Set up mobile tab navigation
+ */
+function setupMobileTabNavigation(): void {
+  const tabButtons = document.querySelectorAll('.mobile-tab-btn');
+  const tabPanels = document.querySelectorAll('.mobile-tab-panel');
+
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tabId = btn.getAttribute('data-tab');
+      if (!tabId) return;
+
+      // Update active states
+      tabButtons.forEach(b => b.classList.remove('active'));
+      tabPanels.forEach(p => p.classList.remove('active'));
+
+      btn.classList.add('active');
+      const panel = document.querySelector(`.mobile-tab-panel[data-tab="${tabId}"]`);
+      panel?.classList.add('active');
+    });
+  });
+}
+
+/**
+ * Set up mobile file loader
+ */
+function setupMobileFileLoader(): void {
+  const mobileFileBtn = document.getElementById('mobile-file-loader-btn');
+  const mobileFileInput = document.getElementById('mobile-file-input') as HTMLInputElement;
+
+  if (!mobileFileBtn || !mobileFileInput) return;
+
+  mobileFileBtn.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('input')) return;
+    mobileFileInput.click();
+  });
+
+  mobileFileInput.addEventListener('change', (e) => {
+    const files = (e.target as HTMLInputElement).files;
+    if (files && files[0]) {
+      handleFile(files[0]);
+    }
+  });
 }
 
 /**
@@ -101,28 +211,48 @@ async function loadSampleData(): Promise<void> {
     // Generate wavetables for all days
     generateAllWavetables(glucoseData.days);
 
-    // Update UI
+    // Update desktop UI
     oscillatorMixer?.setData(glucoseData);
     
-    // Update file loader to show loaded state
-    const fileLoaderBtn = document.getElementById('file-loader-btn');
-    const fileLabel = document.getElementById('file-label');
+    // Update mobile UI
+    mobileOscillatorMixer?.setData(glucoseData);
     
-    fileLoaderBtn?.classList.add('loaded');
-    
-    if (fileLabel) {
-      fileLabel.textContent = `${glucoseData.days.size} days`;
-    }
+    // Update file loaders to show loaded state
+    updateFileLoaderState(glucoseData.days.size);
 
     // Auto-assign first day to oscillator 1
     const dates = Array.from(glucoseData.days.keys()).sort().reverse();
     if (dates.length > 0) {
       oscillatorMixer?.setOscillatorDay(0, dates[0]);
+      mobileOscillatorMixer?.setOscillatorDay(0, dates[0]);
     }
 
     console.log(`Auto-loaded sample data: ${glucoseData.days.size} days`);
   } catch (error) {
     console.warn('Failed to load sample data:', error);
+  }
+}
+
+/**
+ * Update file loader UI state for both desktop and mobile
+ */
+function updateFileLoaderState(dayCount: number): void {
+  // Desktop file loader
+  const fileLoaderBtn = document.getElementById('file-loader-btn');
+  const fileLabel = document.getElementById('file-label');
+  
+  fileLoaderBtn?.classList.add('loaded');
+  if (fileLabel) {
+    fileLabel.textContent = `${dayCount} days`;
+  }
+
+  // Mobile file loader
+  const mobileFileBtn = document.getElementById('mobile-file-loader-btn');
+  const mobileFileLabel = document.getElementById('mobile-file-label');
+  
+  mobileFileBtn?.classList.add('loaded');
+  if (mobileFileLabel) {
+    mobileFileLabel.textContent = `${dayCount}`;
   }
 }
 
@@ -182,7 +312,7 @@ function setupFileLoader(): void {
  */
 async function handleFile(file: File): Promise<void> {
   const fileLoaderBtn = document.getElementById('file-loader-btn');
-  const fileLabel = document.getElementById('file-label');
+  const mobileFileBtn = document.getElementById('mobile-file-loader-btn');
   
   if (!file.name.endsWith('.csv')) {
     showError('Please upload a CSV file from LibreView');
@@ -191,32 +321,38 @@ async function handleFile(file: File): Promise<void> {
 
   try {
     fileLoaderBtn?.classList.add('loading');
+    mobileFileBtn?.classList.add('loading');
     
     const text = await file.text();
     glucoseData = parseLibreViewCSV(text);
     
     if (glucoseData.days.size === 0) {
       showError('No glucose data found in the file');
+      fileLoaderBtn?.classList.remove('loading');
+      mobileFileBtn?.classList.remove('loading');
       return;
     }
 
     // Generate wavetables for all days
     generateAllWavetables(glucoseData.days);
 
-    // Update UI
+    // Update desktop UI
     oscillatorMixer?.setData(glucoseData);
     
-    fileLoaderBtn?.classList.remove('loading');
-    fileLoaderBtn?.classList.add('loaded');
+    // Update mobile UI
+    mobileOscillatorMixer?.setData(glucoseData);
     
-    if (fileLabel) {
-      fileLabel.textContent = `${glucoseData.days.size} days`;
-    }
+    fileLoaderBtn?.classList.remove('loading');
+    mobileFileBtn?.classList.remove('loading');
+    
+    // Update file loader states
+    updateFileLoaderState(glucoseData.days.size);
 
     // Auto-assign first day to oscillator 1
     const dates = Array.from(glucoseData.days.keys()).sort().reverse();
     if (dates.length > 0) {
       oscillatorMixer?.setOscillatorDay(0, dates[0]);
+      mobileOscillatorMixer?.setOscillatorDay(0, dates[0]);
     }
 
     console.log(`Loaded ${glucoseData.days.size} days of glucose data`);
@@ -224,6 +360,7 @@ async function handleFile(file: File): Promise<void> {
     console.error('Error parsing file:', error);
     showError('Error parsing file. Make sure it\'s a valid LibreView export.');
     fileLoaderBtn?.classList.remove('loading');
+    mobileFileBtn?.classList.remove('loading');
   }
 }
 
@@ -255,6 +392,7 @@ function setupStartButton(): void {
       // Hide the overlay (not just the button)
       startOverlay.classList.add('hidden');
       document.querySelector('.app-container')?.classList.add('audio-started');
+      document.querySelector('.mobile-view')?.classList.add('audio-started');
       
       console.log('Audio started');
     } catch (error) {

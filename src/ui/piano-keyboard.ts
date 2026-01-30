@@ -210,16 +210,39 @@ export class PianoKeyboard {
       }
     });
 
-    // Touch events
+    // Touch events with multi-touch support
     key.addEventListener('touchstart', (e) => {
       e.preventDefault();
       this.handleNoteOn(keyInfo.note);
-    });
+    }, { passive: false });
 
     key.addEventListener('touchend', (e) => {
       e.preventDefault();
       this.handleNoteOff(keyInfo.note);
-    });
+    }, { passive: false });
+
+    key.addEventListener('touchcancel', (e) => {
+      e.preventDefault();
+      this.handleNoteOff(keyInfo.note);
+    }, { passive: false });
+
+    // Handle touch move for glissando effect
+    key.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const element = document.elementFromPoint(touch.clientX, touch.clientY);
+      const targetNote = element?.closest('.piano-key')?.getAttribute('data-note');
+      
+      if (targetNote && targetNote !== keyInfo.note) {
+        // Moving to a different key
+        if (this.activeNotes.has(keyInfo.note)) {
+          this.handleNoteOff(keyInfo.note);
+        }
+        if (!this.activeNotes.has(targetNote)) {
+          this.handleNoteOn(targetNote);
+        }
+      }
+    }, { passive: false });
 
     return key;
   }
