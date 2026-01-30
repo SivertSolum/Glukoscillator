@@ -64,17 +64,17 @@
   }
   
   .piano-keyboard {
-    height: 120px;
+    height: 160px;
   }
   
   .white-key {
     width: 36px;
-    height: 110px;
+    height: 150px;
   }
   
   .black-key {
     width: 24px;
-    height: 70px;
+    height: 100px;
     margin-left: -12px;
     margin-right: -12px;
   }
