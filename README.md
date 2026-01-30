@@ -416,18 +416,6 @@ The visual aesthetic uses:
 
 ---
 
-## 🤝 Contributing
-
-Contributions are welcome! Areas of interest:
-
-- Additional CGM data format parsers (Dexcom, Medtronic, etc.)
-- New audio effects
-- Mobile touch optimization
-- Accessibility improvements
-- Documentation translations
-
----
-
 <p align="center">
   <strong>Turn your data into art. 🩸→🎵</strong>
 </p>
