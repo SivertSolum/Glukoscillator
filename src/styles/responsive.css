@@ -284,6 +284,11 @@
   display: flex;
 }
 
+/* Effects panel needs overflow visible for dropdown */
+.mobile-tab-panel[data-tab="effects"] {
+  overflow: visible;
+}
+
 /* =====================================================
    MOBILE TAB NAVIGATION
    ===================================================== */
@@ -575,18 +580,19 @@
   border-radius: var(--radius-md);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .mobile-effects-container .effects-pedalboard {
   flex-wrap: nowrap;
-  overflow-x: auto;
+  overflow-x: scroll;
   overflow-y: hidden;
   padding: var(--spacing-sm);
   gap: var(--spacing-sm);
   -webkit-overflow-scrolling: touch;
   flex: 1;
   min-height: 0;
+  touch-action: pan-x;
 }
 
 .mobile-effects-container .effect-module {
@@ -635,7 +641,7 @@
   font-size: 0.65rem;
 }
 
-/* Mobile effects dropdown - opens upward on mobile */
+/* Mobile effects dropdown - positioned above the button */
 .mobile-effects-container .add-effect-dropdown {
   margin-top: var(--spacing-xs);
   flex-shrink: 0;
@@ -644,45 +650,55 @@
 
 .mobile-effects-container .add-effect-header {
   padding: var(--spacing-sm) var(--spacing-md);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .mobile-effects-container .add-effect-label {
-  font-size: 0.65rem;
+  font-size: 0.7rem;
 }
 
-/* Mobile effects panel - use fixed positioning for reliability */
-@media (max-width: 768px) and (pointer: coarse) {
-  .mobile-effects-container .add-effect-panel {
-    position: fixed !important;
-    bottom: 120px !important;
-    top: auto !important;
-    left: 8px !important;
-    right: 8px !important;
-    max-height: 0;
-    overflow: hidden;
-    opacity: 0;
-    background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
-    border: 1px solid var(--accent-primary);
-    border-radius: var(--radius-md);
-    box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.5);
-    z-index: 1000;
-    transition: max-height 0.3s ease, opacity 0.3s ease;
-  }
+/* Mobile effects panel - position above the header */
+.mobile-effects-container .add-effect-panel {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+  border: 2px solid var(--accent-primary);
+  border-radius: var(--radius-md);
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+}
 
-  .mobile-effects-container .add-effect-dropdown.open .add-effect-panel {
-    max-height: 50vh;
-    opacity: 1;
-    overflow-y: auto;
-  }
+.mobile-effects-container .add-effect-dropdown.open .add-effect-panel {
+  max-height: 200px;
+  opacity: 1;
+  overflow-y: auto;
 }
 
 .mobile-effects-container .add-effect-dropdown.open .add-effect-header {
   border-color: var(--accent-primary);
+  background: rgba(232, 168, 124, 0.1);
 }
 
 .mobile-effects-container .add-effect-item {
   padding: var(--spacing-sm) var(--spacing-md);
-  min-height: 44px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.mobile-effects-container .add-effect-item:active {
+  background: rgba(232, 168, 124, 0.2);
 }
 
 /* =====================================================

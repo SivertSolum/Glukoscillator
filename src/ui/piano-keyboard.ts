@@ -27,6 +27,9 @@ export class PianoKeyboard {
   private resizeObserver: ResizeObserver | null = null;
   private resizeTimeout: ReturnType<typeof setTimeout> | null = null;
   
+  // Track touch-to-note mappings for multi-touch support
+  private activeTouches: Map<number, string> = new Map();
+  
   // Cached singleton references
   private synth: GlucoseSynth;
   private keyboardHandler: KeyboardHandler;
@@ -46,6 +49,92 @@ export class PianoKeyboard {
 
     // Set up resize observer for dynamic sizing
     this.setupResizeObserver();
+    
+    // Set up global touch handlers for multi-touch support
+    this.setupGlobalTouchHandlers();
+  }
+  
+  /**
+   * Set up global touch handlers for proper multi-touch tracking
+   */
+  private setupGlobalTouchHandlers(): void {
+    // Handle all touches at the container level for better multi-touch support
+    this.container.addEventListener('touchstart', (e) => this.handleGlobalTouchStart(e), { passive: false });
+    this.container.addEventListener('touchmove', (e) => this.handleGlobalTouchMove(e), { passive: false });
+    this.container.addEventListener('touchend', (e) => this.handleGlobalTouchEnd(e), { passive: false });
+    this.container.addEventListener('touchcancel', (e) => this.handleGlobalTouchEnd(e), { passive: false });
+  }
+  
+  /**
+   * Handle touch start - can have multiple touches
+   */
+  private handleGlobalTouchStart(e: TouchEvent): void {
+    e.preventDefault();
+    
+    // Process all new/changed touches
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i];
+      const note = this.getNoteFromPoint(touch.clientX, touch.clientY);
+      
+      if (note) {
+        this.activeTouches.set(touch.identifier, note);
+        this.handleNoteOn(note);
+      }
+    }
+  }
+  
+  /**
+   * Handle touch move - for glissando effect
+   */
+  private handleGlobalTouchMove(e: TouchEvent): void {
+    e.preventDefault();
+    
+    // Process all touches
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i];
+      const currentNote = this.activeTouches.get(touch.identifier);
+      const newNote = this.getNoteFromPoint(touch.clientX, touch.clientY);
+      
+      if (newNote && newNote !== currentNote) {
+        // Moving to a different key
+        if (currentNote) {
+          this.handleNoteOff(currentNote);
+        }
+        this.activeTouches.set(touch.identifier, newNote);
+        this.handleNoteOn(newNote);
+      } else if (!newNote && currentNote) {
+        // Moved off all keys
+        this.handleNoteOff(currentNote);
+        this.activeTouches.delete(touch.identifier);
+      }
+    }
+  }
+  
+  /**
+   * Handle touch end/cancel
+   */
+  private handleGlobalTouchEnd(e: TouchEvent): void {
+    e.preventDefault();
+    
+    // Process all ended touches
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i];
+      const note = this.activeTouches.get(touch.identifier);
+      
+      if (note) {
+        this.handleNoteOff(note);
+        this.activeTouches.delete(touch.identifier);
+      }
+    }
+  }
+  
+  /**
+   * Get note from screen coordinates
+   */
+  private getNoteFromPoint(x: number, y: number): string | null {
+    const element = document.elementFromPoint(x, y);
+    const keyElement = element?.closest('.piano-key');
+    return keyElement?.getAttribute('data-note') || null;
   }
 
   /**
@@ -188,7 +277,7 @@ export class PianoKeyboard {
     noteLabel.textContent = keyInfo.note;
     key.appendChild(noteLabel);
 
-    // Mouse/touch events
+    // Mouse events (touch is handled globally for multi-touch support)
     key.addEventListener('mousedown', (e) => {
       e.preventDefault();
       this.handleNoteOn(keyInfo.note);
@@ -209,40 +298,6 @@ export class PianoKeyboard {
         this.handleNoteOn(keyInfo.note);
       }
     });
-
-    // Touch events with multi-touch support
-    key.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      this.handleNoteOn(keyInfo.note);
-    }, { passive: false });
-
-    key.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      this.handleNoteOff(keyInfo.note);
-    }, { passive: false });
-
-    key.addEventListener('touchcancel', (e) => {
-      e.preventDefault();
-      this.handleNoteOff(keyInfo.note);
-    }, { passive: false });
-
-    // Handle touch move for glissando effect
-    key.addEventListener('touchmove', (e) => {
-      e.preventDefault();
-      const touch = e.touches[0];
-      const element = document.elementFromPoint(touch.clientX, touch.clientY);
-      const targetNote = element?.closest('.piano-key')?.getAttribute('data-note');
-      
-      if (targetNote && targetNote !== keyInfo.note) {
-        // Moving to a different key
-        if (this.activeNotes.has(keyInfo.note)) {
-          this.handleNoteOff(keyInfo.note);
-        }
-        if (!this.activeNotes.has(targetNote)) {
-          this.handleNoteOn(targetNote);
-        }
-      }
-    }, { passive: false });
 
     return key;
   }
