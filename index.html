@@ -26,7 +26,14 @@
             <span class="file-label" id="file-label">Load Data</span>
             <input type="file" id="file-input" accept=".csv" />
           </button>
-          <span id="midi-status">MIDI: Not connected</span>
+          <!-- MIDI Device Selector -->
+          <div class="midi-selector">
+            <span class="midi-icon">🎹</span>
+            <select id="midi-device-select" disabled>
+              <option value="">No MIDI devices</option>
+            </select>
+            <span id="midi-status-indicator" class="midi-status-indicator"></span>
+          </div>
         </div>
       </header>
 

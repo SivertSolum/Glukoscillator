@@ -6,7 +6,7 @@ import { parseLibreViewCSV } from './parser/libreview';
 import { generateAllWavetables } from './synthesis/wavetable';
 import { getSynth } from './synthesis/synth-engine';
 import { getKeyboardHandler } from './input/keyboard-handler';
-import { getMIDIHandler, MIDIHandler } from './input/midi-handler';
+import { getMIDIHandler, MIDIHandler, type MIDIDeviceInfo } from './input/midi-handler';
 import { createPianoKeyboard, PianoKeyboard } from './ui/piano-keyboard';
 import { createSynthControls, SynthControls } from './ui/controls';
 import { createOscillatorMixer, OscillatorMixer } from './ui/oscillator-mixer';
@@ -57,9 +57,19 @@ async function init(): Promise<void> {
     midiHandler.onNote((note, isNoteOn) => {
       pianoKeyboard?.setKeyActive(note, isNoteOn);
     });
-    midiHandler.onConnection((connected, deviceName) => {
-      updateMIDIStatus(connected, deviceName);
+    midiHandler.onConnection((connected, _deviceName) => {
+      updateMIDIStatusIndicator(connected);
     });
+    midiHandler.onDeviceChange((devices) => {
+      updateMIDIDeviceList(devices);
+    });
+    setupMIDIDeviceSelector();
+  } else {
+    // Hide MIDI selector if not supported
+    const midiSelector = document.querySelector('.midi-selector') as HTMLElement;
+    if (midiSelector) {
+      midiSelector.style.display = 'none';
+    }
   }
 
   // Auto-load sample data on startup
@@ -255,18 +265,69 @@ function setupStartButton(): void {
 }
 
 /**
- * Update MIDI status display
+ * Set up MIDI device selector dropdown
  */
-function updateMIDIStatus(connected: boolean, deviceName: string): void {
-  const statusEl = document.getElementById('midi-status');
-  if (!statusEl) return;
+function setupMIDIDeviceSelector(): void {
+  const select = document.getElementById('midi-device-select') as HTMLSelectElement;
+  if (!select) return;
+
+  select.addEventListener('change', () => {
+    const midiHandler = getMIDIHandler();
+    const deviceId = select.value || null;
+    midiHandler.selectDevice(deviceId);
+  });
+}
+
+/**
+ * Update MIDI device dropdown list
+ */
+function updateMIDIDeviceList(devices: MIDIDeviceInfo[]): void {
+  const select = document.getElementById('midi-device-select') as HTMLSelectElement;
+  if (!select) return;
+
+  const midiHandler = getMIDIHandler();
+  const currentSelection = midiHandler.getSelectedDeviceId();
+
+  // Clear existing options
+  select.innerHTML = '';
+
+  if (devices.length === 0) {
+    select.innerHTML = '<option value="">No MIDI devices</option>';
+    select.disabled = true;
+    return;
+  }
+
+  // Add placeholder option
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Select MIDI device...';
+  select.appendChild(placeholder);
+
+  // Add device options
+  for (const device of devices) {
+    const option = document.createElement('option');
+    option.value = device.id;
+    option.textContent = device.name;
+    if (device.id === currentSelection) {
+      option.selected = true;
+    }
+    select.appendChild(option);
+  }
+
+  select.disabled = false;
+}
+
+/**
+ * Update MIDI status indicator (LED)
+ */
+function updateMIDIStatusIndicator(connected: boolean): void {
+  const indicator = document.getElementById('midi-status-indicator');
+  if (!indicator) return;
 
   if (connected) {
-    statusEl.textContent = `MIDI: ${deviceName}`;
-    statusEl.classList.add('connected');
+    indicator.classList.add('connected');
   } else {
-    statusEl.textContent = 'MIDI: Disconnected';
-    statusEl.classList.remove('connected');
+    indicator.classList.remove('connected');
   }
 }
 

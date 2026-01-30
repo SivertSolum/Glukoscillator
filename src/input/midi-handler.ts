@@ -4,13 +4,23 @@
 import { getSynth, midiToNoteName, GlucoseSynth } from '../synthesis/synth-engine';
 
 type MIDICallback = (note: string, isNoteOn: boolean, velocity: number) => void;
+type DeviceChangeCallback = (devices: MIDIDeviceInfo[]) => void;
+
+export interface MIDIDeviceInfo {
+  id: string;
+  name: string;
+  manufacturer: string;
+  state: 'connected' | 'disconnected';
+}
 
 export class MIDIHandler {
   private midiAccess: MIDIAccess | null = null;
-  private inputs: Map<string, MIDIInput> = new Map();
+  private activeInput: MIDIInput | null = null;
+  private selectedDeviceId: string | null = null;
   private callback: MIDICallback | null = null;
   private isEnabled = true;
   private connectionCallback: ((connected: boolean, deviceName: string) => void) | null = null;
+  private deviceChangeCallback: DeviceChangeCallback | null = null;
   
   // Cached synth reference (lazily initialized)
   private _synth: GlucoseSynth | null = null;
@@ -47,8 +57,16 @@ export class MIDIHandler {
       this.midiAccess = await navigator.requestMIDIAccess();
       this.midiAccess.onstatechange = this.handleStateChange;
       
-      // Connect to all available inputs
-      this.connectInputs();
+      // Notify about available devices
+      this.notifyDeviceChange();
+      
+      // Auto-select first device if none selected
+      if (!this.selectedDeviceId) {
+        const devices = this.getAvailableDevices();
+        if (devices.length > 0) {
+          this.selectDevice(devices[0].id);
+        }
+      }
       
       console.log('MIDI access granted');
       return true;
@@ -62,10 +80,10 @@ export class MIDIHandler {
    * Stop listening to MIDI
    */
   stop(): void {
-    for (const input of this.inputs.values()) {
-      input.onmidimessage = null;
+    if (this.activeInput) {
+      this.activeInput.onmidimessage = null;
+      this.activeInput = null;
     }
-    this.inputs.clear();
     
     if (this.midiAccess) {
       this.midiAccess.onstatechange = null;
@@ -97,30 +115,75 @@ export class MIDIHandler {
   }
 
   /**
-   * Get list of connected MIDI devices
+   * Set callback for device list changes
    */
-  getConnectedDevices(): string[] {
-    const devices: string[] = [];
-    for (const input of this.inputs.values()) {
-      devices.push(input.name || 'Unknown Device');
+  onDeviceChange(callback: DeviceChangeCallback): void {
+    this.deviceChangeCallback = callback;
+  }
+
+  /**
+   * Get list of all available MIDI input devices
+   */
+  getAvailableDevices(): MIDIDeviceInfo[] {
+    if (!this.midiAccess) return [];
+    
+    const devices: MIDIDeviceInfo[] = [];
+    for (const input of this.midiAccess.inputs.values()) {
+      devices.push({
+        id: input.id,
+        name: input.name || 'Unknown Device',
+        manufacturer: input.manufacturer || 'Unknown',
+        state: input.state as 'connected' | 'disconnected'
+      });
     }
     return devices;
   }
 
   /**
-   * Connect to all available MIDI inputs
+   * Get the currently selected device ID
    */
-  private connectInputs(): void {
-    if (!this.midiAccess) return;
+  getSelectedDeviceId(): string | null {
+    return this.selectedDeviceId;
+  }
 
-    for (const input of this.midiAccess.inputs.values()) {
-      if (!this.inputs.has(input.id)) {
-        input.onmidimessage = this.handleMIDIMessage;
-        this.inputs.set(input.id, input);
-        console.log(`Connected to MIDI device: ${input.name}`);
-        this.connectionCallback?.(true, input.name || 'Unknown Device');
-      }
+  /**
+   * Select a specific MIDI device to listen to
+   */
+  selectDevice(deviceId: string | null): void {
+    if (!this.midiAccess) return;
+    
+    // Disconnect from current device
+    if (this.activeInput) {
+      this.activeInput.onmidimessage = null;
+      this.synth.allNotesOff();
+      console.log(`Disconnected from MIDI device: ${this.activeInput.name}`);
+      this.connectionCallback?.(false, this.activeInput.name || 'Unknown Device');
+      this.activeInput = null;
     }
+    
+    this.selectedDeviceId = deviceId;
+    
+    // If no device selected, we're done
+    if (!deviceId) {
+      return;
+    }
+    
+    // Connect to the selected device
+    const input = this.midiAccess.inputs.get(deviceId);
+    if (input && input.state === 'connected') {
+      input.onmidimessage = this.handleMIDIMessage;
+      this.activeInput = input;
+      console.log(`Connected to MIDI device: ${input.name}`);
+      this.connectionCallback?.(true, input.name || 'Unknown Device');
+    }
+  }
+
+  /**
+   * Notify listeners about device list changes
+   */
+  private notifyDeviceChange(): void {
+    const devices = this.getAvailableDevices();
+    this.deviceChangeCallback?.(devices);
   }
 
   /**
@@ -131,13 +194,24 @@ export class MIDIHandler {
     if (!port) return;
     
     if (port.type === 'input') {
+      // Notify about device list changes
+      this.notifyDeviceChange();
+      
       if (port.state === 'connected') {
-        this.connectInputs();
+        // If this is our selected device, reconnect to it
+        if (port.id === this.selectedDeviceId && !this.activeInput) {
+          this.selectDevice(port.id);
+        }
+        // If no device is selected and this is the first one, auto-select it
+        else if (!this.selectedDeviceId) {
+          this.selectDevice(port.id);
+        }
       } else if (port.state === 'disconnected') {
-        const input = this.inputs.get(port.id);
-        if (input) {
-          input.onmidimessage = null;
-          this.inputs.delete(port.id);
+        // If the disconnected device was our active one, clean up
+        if (this.activeInput && this.activeInput.id === port.id) {
+          this.activeInput.onmidimessage = null;
+          this.activeInput = null;
+          this.synth.allNotesOff();
           console.log(`Disconnected MIDI device: ${port.name}`);
           this.connectionCallback?.(false, port.name || 'Unknown Device');
         }

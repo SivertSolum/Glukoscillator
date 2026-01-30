@@ -179,7 +179,12 @@ export class EffectsPanel {
     // Don't show indicator if dropping in same position
     const enabledEffects = this.effectsChain.getEnabledEffects();
     const draggedIndex = enabledEffects.indexOf(this.draggedEffect);
-    if (insertIndex === draggedIndex || insertIndex === draggedIndex + 1) {
+    
+    // Map insertIndex from filtered modules array back to full array position
+    // Since filtered array skips the dragged element, indices at or after draggedIndex need +1
+    const mappedIndex = insertIndex >= draggedIndex ? insertIndex + 1 : insertIndex;
+    
+    if (mappedIndex === draggedIndex || mappedIndex === draggedIndex + 1) {
       this.hideDropIndicator();
       this.dropTargetIndex = -1;
       return;

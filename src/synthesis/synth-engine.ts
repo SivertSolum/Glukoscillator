@@ -78,7 +78,7 @@ export class GlucoseSynth {
         wavetable: null,
         partials: [],
         dayLabel: '',
-        level: osc === 0 ? 1 : 0.5, // First osc full, others half
+        level: 0.5, // All oscillators start at half volume
       });
     }
   }
