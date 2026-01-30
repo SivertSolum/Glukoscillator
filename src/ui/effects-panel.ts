@@ -43,6 +43,9 @@ export class EffectsPanel {
   // Cached references for performance
   private effectsChain: EffectsChain;
 
+  // Track last dropdown toggle time to prevent double-firing
+  private lastDropdownToggle: number = 0;
+
   constructor(containerId: string) {
     const container = document.getElementById(containerId);
     if (!container) {
@@ -55,15 +58,30 @@ export class EffectsPanel {
     
     this.handleMouseMove = this.handleMouseMove.bind(this);
     this.handleMouseUp = this.handleMouseUp.bind(this);
+    this.handleTouchMove = this.handleTouchMove.bind(this);
+    this.handleTouchEnd = this.handleTouchEnd.bind(this);
+    
     document.addEventListener('mousemove', this.handleMouseMove);
     document.addEventListener('mouseup', this.handleMouseUp);
+    document.addEventListener('touchmove', this.handleTouchMove, { passive: false });
+    document.addEventListener('touchend', this.handleTouchEnd);
     
-    // Close dropdown when clicking outside
+    // Close dropdown when clicking/touching outside - with debounce check
     document.addEventListener('click', (e) => {
+      // Debounce: ignore clicks within 300ms of toggle
+      if (Date.now() - this.lastDropdownToggle < 300) return;
       if (this.addDropdown && !this.addDropdown.contains(e.target as Node) && this.isDropdownOpen) {
         this.closeDropdown();
       }
     });
+    
+    document.addEventListener('touchstart', (e) => {
+      // Debounce: ignore touches within 300ms of toggle
+      if (Date.now() - this.lastDropdownToggle < 300) return;
+      if (this.addDropdown && !this.addDropdown.contains(e.target as Node) && this.isDropdownOpen) {
+        this.closeDropdown();
+      }
+    }, { passive: true });
     
     this.render();
     this.setupEffectsCallbacks();
@@ -261,17 +279,25 @@ export class EffectsPanel {
     `;
     
     const header = dropdown.querySelector('.add-effect-header');
-    header?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.toggleDropdown();
-    });
     
-    // Touch event for mobile
+    // Use a flag to prevent double-firing on touch devices
+    let touchHandled = false;
+    
     header?.addEventListener('touchend', (e) => {
       e.stopPropagation();
       e.preventDefault();
+      touchHandled = true;
       this.toggleDropdown();
+      // Reset flag after a short delay
+      setTimeout(() => { touchHandled = false; }, 300);
     }, { passive: false });
+    
+    header?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Skip if touch already handled this
+      if (touchHandled) return;
+      this.toggleDropdown();
+    });
     
     this.updateDropdownList(dropdown);
     
@@ -305,25 +331,31 @@ export class EffectsPanel {
         <span class="effect-item-name">${getEffectDisplayName(effectId)}</span>
       `;
       
-      item.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.addEffect(effectId);
-        this.closeDropdown();
-      });
+      // Use a flag to prevent double-firing on touch devices
+      let itemTouchHandled = false;
       
-      // Touch event for mobile
       item.addEventListener('touchend', (e) => {
         e.stopPropagation();
         e.preventDefault();
+        itemTouchHandled = true;
         this.addEffect(effectId);
         this.closeDropdown();
+        setTimeout(() => { itemTouchHandled = false; }, 300);
       }, { passive: false });
+      
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (itemTouchHandled) return;
+        this.addEffect(effectId);
+        this.closeDropdown();
+      });
       
       list.appendChild(item);
     }
   }
 
   private toggleDropdown(): void {
+    this.lastDropdownToggle = Date.now();
     if (this.isDropdownOpen) {
       this.closeDropdown();
     } else {
@@ -502,6 +534,8 @@ export class EffectsPanel {
   private setupKnobHandlers(module: HTMLElement, effectId: EffectId): void {
     module.querySelectorAll('.mini-knob').forEach(knob => {
       const knobEl = knob as HTMLElement;
+      
+      // Mouse handlers
       knobEl.addEventListener('mousedown', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -510,6 +544,35 @@ export class EffectsPanel {
         this.startValue = parseFloat(knobEl.dataset.value || '0');
         knobEl.classList.add('active');
         (knobEl as any)._effectId = effectId;
+      });
+      
+      // Touch handlers for mobile
+      knobEl.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const touch = e.touches[0];
+        this.activeKnob = knobEl;
+        this.startY = touch.clientY;
+        this.startValue = parseFloat(knobEl.dataset.value || '0');
+        knobEl.classList.add('active');
+        (knobEl as any)._effectId = effectId;
+      }, { passive: false });
+      
+      // Double-tap to reset to default (middle value)
+      let lastTap = 0;
+      knobEl.addEventListener('touchend', (e) => {
+        const now = Date.now();
+        if (now - lastTap < 300) {
+          // Double tap - reset to middle value
+          e.preventDefault();
+          const min = parseFloat(knobEl.dataset.min || '0');
+          const max = parseFloat(knobEl.dataset.max || '100');
+          const midValue = (min + max) / 2;
+          knobEl.dataset.value = String(midValue);
+          knobEl.style.transform = `rotate(${-135 + ((midValue - min) / (max - min)) * 270}deg)`;
+          this.updateEffectParameter(effectId, knobEl.dataset.param || '', midValue);
+        }
+        lastTap = now;
       });
     });
   }
@@ -553,6 +616,50 @@ export class EffectsPanel {
       this.activeKnob = null;
     }
     // Clear any pending updates
+    this.pendingKnobUpdate = null;
+  }
+
+  private handleTouchMove(e: TouchEvent): void {
+    if (!this.activeKnob) return;
+    e.preventDefault();
+    
+    const touch = e.touches[0];
+    const knob = this.activeKnob;
+    const min = parseFloat(knob.dataset.min || '0');
+    const max = parseFloat(knob.dataset.max || '100');
+    const param = knob.dataset.param || '';
+    const effectId = (knob as any)._effectId as EffectId;
+
+    const deltaY = this.startY - touch.clientY;
+    const newValue = Math.max(min, Math.min(max, this.startValue + deltaY * 0.5));
+    
+    // Update visual immediately
+    knob.dataset.value = String(newValue);
+    knob.style.transform = `rotate(${-135 + ((newValue - min) / (max - min)) * 270}deg)`;
+    
+    // Throttle audio parameter updates
+    this.pendingKnobUpdate = { effectId, param, value: newValue };
+    if (!this.knobUpdateScheduled) {
+      this.knobUpdateScheduled = true;
+      requestAnimationFrame(() => {
+        if (this.pendingKnobUpdate) {
+          this.updateEffectParameter(
+            this.pendingKnobUpdate.effectId,
+            this.pendingKnobUpdate.param,
+            this.pendingKnobUpdate.value
+          );
+          this.pendingKnobUpdate = null;
+        }
+        this.knobUpdateScheduled = false;
+      });
+    }
+  }
+
+  private handleTouchEnd(): void {
+    if (this.activeKnob) {
+      this.activeKnob.classList.remove('active');
+      this.activeKnob = null;
+    }
     this.pendingKnobUpdate = null;
   }
 

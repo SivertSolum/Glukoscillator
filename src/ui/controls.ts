@@ -33,8 +33,13 @@ export class SynthControls {
     // Global mouse handlers for knob dragging
     this.handleMouseMove = this.handleMouseMove.bind(this);
     this.handleMouseUp = this.handleMouseUp.bind(this);
+    this.handleTouchMove = this.handleTouchMove.bind(this);
+    this.handleTouchEnd = this.handleTouchEnd.bind(this);
+    
     document.addEventListener('mousemove', this.handleMouseMove);
     document.addEventListener('mouseup', this.handleMouseUp);
+    document.addEventListener('touchmove', this.handleTouchMove, { passive: false });
+    document.addEventListener('touchend', this.handleTouchEnd);
   }
 
   /**
@@ -165,11 +170,38 @@ export class SynthControls {
       this.startValue = parseFloat(knob.dataset.value || '0');
       knob.classList.add('active');
     });
+    
+    // Touch handler for mobile
+    knob.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      this.activeKnob = knob;
+      this.startY = touch.clientY;
+      this.startValue = parseFloat(knob.dataset.value || '0');
+      knob.classList.add('active');
+    }, { passive: false });
+    
+    // Double-tap to reset to default
+    let lastTap = 0;
+    knob.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - lastTap < 300) {
+        // Double tap - reset to middle value
+        e.preventDefault();
+        const midValue = (min + max) / 2;
+        knob.dataset.value = String(midValue);
+        knob.style.transform = `rotate(${this.valueToRotation(midValue, min, max)}deg)`;
+        onChange(midValue);
+        this.updateValueDisplay(id, midValue);
+      }
+      lastTap = now;
+    });
 
     // Store onChange callback
     (knob as any)._onChange = onChange;
     (knob as any)._min = min;
     (knob as any)._max = max;
+    (knob as any)._id = id;
 
     knobContainer.appendChild(knob);
     
@@ -284,6 +316,71 @@ export class SynthControls {
     }
     // Clear pending update
     this.pendingUpdate = null;
+  }
+
+  /**
+   * Handle touch move for knob dragging on mobile
+   */
+  private handleTouchMove(e: TouchEvent): void {
+    if (!this.activeKnob) return;
+    e.preventDefault();
+
+    const touch = e.touches[0];
+    const knob = this.activeKnob;
+    const min = (knob as any)._min;
+    const max = (knob as any)._max;
+    const onChange = (knob as any)._onChange;
+    const id = (knob as any)._id || knob.id.replace('knob-', '');
+
+    // Calculate new value based on vertical drag
+    const deltaY = this.startY - touch.clientY;
+    const sensitivity = 0.005;
+    const range = max - min;
+    const deltaValue = deltaY * sensitivity * range;
+    
+    const newValue = Math.max(min, Math.min(max, this.startValue + deltaValue));
+    
+    // Update knob visual immediately
+    knob.dataset.value = String(newValue);
+    const rotation = this.valueToRotation(newValue, min, max);
+    knob.style.transform = `rotate(${rotation}deg)`;
+
+    // Update value display
+    this.updateValueDisplay(id, newValue);
+
+    // Throttle audio parameter updates
+    this.pendingUpdate = () => onChange(newValue);
+    if (!this.updateScheduled) {
+      this.updateScheduled = true;
+      requestAnimationFrame(() => {
+        if (this.pendingUpdate) {
+          this.pendingUpdate();
+          this.pendingUpdate = null;
+        }
+        this.updateScheduled = false;
+      });
+    }
+  }
+
+  /**
+   * Handle touch end
+   */
+  private handleTouchEnd(): void {
+    if (this.activeKnob) {
+      this.activeKnob.classList.remove('active');
+      this.activeKnob = null;
+    }
+    this.pendingUpdate = null;
+  }
+
+  /**
+   * Update value display for a knob
+   */
+  private updateValueDisplay(id: string, value: number): void {
+    const valueDisplay = document.getElementById(`knob-value-${id}`);
+    if (valueDisplay) {
+      valueDisplay.textContent = this.formatValue(value, id);
+    }
   }
 
   /**
