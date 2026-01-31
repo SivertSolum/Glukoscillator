@@ -586,7 +586,8 @@
   touch-action: auto;
 }
 
-.mobile-effects-container .effects-rack {
+/* When mobile-effects-container also has effects-rack class (same element) */
+.mobile-effects-container.effects-rack {
   flex: 1;
   min-height: 0;
   border-radius: var(--radius-md);

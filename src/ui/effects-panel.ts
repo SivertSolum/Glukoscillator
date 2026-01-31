@@ -69,7 +69,9 @@ export class EffectsPanel {
     // Close dropdown when clicking outside (desktop only - mobile uses inline expansion)
     document.addEventListener('click', (e) => {
       // Skip on mobile - the inline expansion doesn't need auto-close
-      if (this.container.closest('.mobile-effects-container')) return;
+      // Check both the container class AND if we're inside mobile-effects-container
+      if (this.container.classList.contains('mobile-effects-container') || 
+          this.container.closest('.mobile-effects-container')) return;
       
       // Debounce: ignore clicks within 300ms of toggle
       if (Date.now() - this.lastDropdownToggle < 300) return;
@@ -77,6 +79,20 @@ export class EffectsPanel {
         this.closeDropdown();
       }
     });
+    
+    // For mobile: close dropdown when tapping outside of it
+    document.addEventListener('touchstart', (e) => {
+      // Only for mobile
+      if (!this.container.classList.contains('mobile-effects-container')) return;
+      
+      // Debounce: don't close if just opened
+      if (Date.now() - this.lastDropdownToggle < 400) return;
+      
+      // If dropdown is open and tap is outside, close it
+      if (this.isDropdownOpen && this.addDropdown && !this.addDropdown.contains(e.target as Node)) {
+        this.closeDropdown();
+      }
+    }, { passive: true });
     
     this.render();
     this.setupEffectsCallbacks();
@@ -95,7 +111,8 @@ export class EffectsPanel {
 
   render(): void {
     this.container.innerHTML = '';
-    this.container.className = 'effects-rack';
+    // Add effects-rack class without removing existing classes (like mobile-effects-container)
+    this.container.classList.add('effects-rack');
 
     const header = document.createElement('div');
     header.className = 'rack-header';
@@ -275,37 +292,35 @@ export class EffectsPanel {
     
     const header = dropdown.querySelector('.add-effect-header') as HTMLElement;
     
-    // Track if we should handle the click (to prevent double-firing on touch devices)
-    let touchHandled = false;
-    let touchStartTime = 0;
+    // Use a single pointer event handler that works for both touch and mouse
+    let pointerHandled = false;
     
-    // Touch start - record time to distinguish taps from scrolls
-    header?.addEventListener('touchstart', (e) => {
-      touchStartTime = Date.now();
-      e.stopPropagation();
-    }, { passive: true });
-    
-    // Touch handler for mobile - more reliable than click on touch devices
-    header?.addEventListener('touchend', (e) => {
+    // Pointerup handler - works for both touch and mouse
+    header?.addEventListener('pointerup', (e) => {
       e.stopPropagation();
       e.preventDefault();
       
-      // Only trigger if it was a quick tap (not a scroll gesture)
-      const tapDuration = Date.now() - touchStartTime;
-      if (tapDuration < 300) {
-        touchHandled = true;
-        this.toggleDropdown();
-        // Reset after a short delay
-        setTimeout(() => { touchHandled = false; }, 300);
-      }
-    }, { passive: false });
+      // Prevent double-firing
+      if (pointerHandled) return;
+      pointerHandled = true;
+      
+      this.toggleDropdown();
+      
+      // Reset after a short delay
+      setTimeout(() => { pointerHandled = false; }, 300);
+    });
     
-    // Click handler for desktop (and fallback)
+    // Prevent context menu on long press
+    header?.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+    });
+    
+    // Fallback click handler for older browsers
     header?.addEventListener('click', (e) => {
       e.stopPropagation();
       e.preventDefault();
-      // Skip if touch already handled this interaction
-      if (touchHandled) return;
+      // Skip if pointer already handled this interaction
+      if (pointerHandled) return;
       this.toggleDropdown();
     });
     
@@ -341,36 +356,28 @@ export class EffectsPanel {
         <span class="effect-item-name">${getEffectDisplayName(effectId)}</span>
       `;
       
-      // Track touch handling to prevent double-firing
-      let touchHandled = false;
-      let itemTouchStartTime = 0;
+      // Use pointer events for better cross-platform support
+      let itemPointerHandled = false;
       
-      // Touch start - record time
-      item.addEventListener('touchstart', (e) => {
-        itemTouchStartTime = Date.now();
-        e.stopPropagation();
-      }, { passive: true });
-      
-      // Touch handler for mobile
-      item.addEventListener('touchend', (e) => {
+      // Pointerup handler - works for both touch and mouse
+      item.addEventListener('pointerup', (e) => {
         e.stopPropagation();
         e.preventDefault();
         
-        // Only trigger if it was a quick tap
-        const tapDuration = Date.now() - itemTouchStartTime;
-        if (tapDuration < 300) {
-          touchHandled = true;
-          this.addEffect(effectId);
-          this.closeDropdown();
-          setTimeout(() => { touchHandled = false; }, 300);
-        }
-      }, { passive: false });
+        if (itemPointerHandled) return;
+        itemPointerHandled = true;
+        
+        this.addEffect(effectId);
+        this.closeDropdown();
+        
+        setTimeout(() => { itemPointerHandled = false; }, 300);
+      });
       
-      // Click handler for desktop (and fallback)
+      // Fallback click handler
       item.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        if (touchHandled) return;
+        if (itemPointerHandled) return;
         this.addEffect(effectId);
         this.closeDropdown();
       });
@@ -645,10 +652,25 @@ export class EffectsPanel {
   }
 
   private handleTouchMove(e: TouchEvent): void {
+    // Only handle if we're dragging a knob
     if (!this.activeKnob) return;
-    e.preventDefault();
     
+    // Only prevent default (block scroll) if touch is on the active knob
+    // This allows scrolling to work normally when not interacting with knobs
     const touch = e.touches[0];
+    const knobRect = this.activeKnob.getBoundingClientRect();
+    const isOverKnob = touch.clientX >= knobRect.left && touch.clientX <= knobRect.right &&
+                       touch.clientY >= knobRect.top - 50 && touch.clientY <= knobRect.bottom + 50;
+    
+    if (isOverKnob || this.activeKnob.classList.contains('active')) {
+      e.preventDefault();
+    } else {
+      // User is scrolling away from the knob, release it
+      this.activeKnob.classList.remove('active');
+      this.activeKnob = null;
+      return;
+    }
+    
     const knob = this.activeKnob;
     const min = parseFloat(knob.dataset.min || '0');
     const max = parseFloat(knob.dataset.max || '100');
