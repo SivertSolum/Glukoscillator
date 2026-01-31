@@ -140,6 +140,8 @@
     top: 0;
     left: 0;
     box-sizing: border-box;
+    /* Safe area for notched devices */
+    padding-bottom: env(safe-area-inset-bottom, 0);
   }
 
   /* Ensure body doesn't scroll */
@@ -181,6 +183,46 @@
     top: 0;
     left: 100vw;
     left: 100dvw;
+  }
+  
+  /* Fix heights for rotated view - use vw for height since it's rotated */
+  .mobile-tab-content {
+    /* After rotation, the "height" of the content area is based on original viewport width */
+    height: calc(100vw - 100px); /* Subtract header (44px) + tab nav (56px) */
+    flex: none; /* Don't use flex sizing, use explicit height */
+  }
+  
+  .mobile-tab-panel {
+    /* Use explicit height instead of inset for rotated view */
+    height: 100%;
+    max-height: 100%;
+  }
+  
+  /* Effects panel needs explicit height in rotated mode */
+  .mobile-effects-container {
+    height: 100%;
+    max-height: 100%;
+  }
+  
+  .mobile-effects-container.effects-rack {
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+  }
+  
+  .mobile-effects-container .effects-pedalboard {
+    /* Explicit height calculation for scroll in rotated mode */
+    flex: 1;
+    min-height: 0;
+    max-height: none; /* Let flex handle it */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Ensure add dropdown doesn't get cut off */
+  .mobile-effects-container .add-effect-dropdown {
+    flex-shrink: 0;
+    min-height: 52px;
   }
 }
 
@@ -278,6 +320,8 @@
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+  /* Ensure panel doesn't extend beyond its container */
+  max-height: 100%;
 }
 
 .mobile-tab-panel.active {
@@ -294,6 +338,9 @@
   flex-shrink: 0;
   height: 56px;
   min-height: 56px;
+  /* Ensure tab bar stays above content */
+  position: relative;
+  z-index: 50;
 }
 
 .mobile-tab-btn {
@@ -353,12 +400,17 @@
 .mobile-tab-panel[data-tab="effects"] {
   padding: 0;
   overflow: hidden; /* Prevent outer scroll, inner pedalboard handles it */
+  /* Ensure the panel doesn't extend under the tab bar */
+  box-sizing: border-box;
 }
 
 /* When effects tab is active, use column flex layout */
 .mobile-tab-panel[data-tab="effects"].active {
   display: flex;
   flex-direction: column;
+  /* Explicit height to ensure proper containment */
+  height: 100%;
+  max-height: 100%;
 }
 
 .mobile-piano-keyboard {
@@ -595,6 +647,9 @@
   flex-direction: column;
   overflow: hidden; /* Contain content within rack, pedalboard scrolls internally */
   background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+  /* Override desktop z-index to not conflict with mobile tab nav */
+  z-index: 1;
+  position: relative;
 }
 
 .mobile-effects-container .rack-header {
@@ -634,6 +689,7 @@
   flex-direction: column;
   gap: var(--spacing-sm);
   padding: var(--spacing-sm);
+  padding-bottom: 80px; /* Large padding at bottom for last item visibility above add button */
   overflow-y: scroll; /* Force scrollbar - auto may not work on some mobile browsers */
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
@@ -742,6 +798,7 @@
 /* Add effect section - inline expandable */
 .mobile-effects-container .add-effect-dropdown {
   margin: 0;
+  margin-bottom: env(safe-area-inset-bottom, 0); /* Account for notch/home bar */
   flex-shrink: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   background: linear-gradient(180deg, var(--metal-mid) 0%, var(--metal-dark) 100%);
