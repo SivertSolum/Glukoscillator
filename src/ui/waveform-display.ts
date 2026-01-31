@@ -19,7 +19,7 @@ export class WaveformDisplay {
   // Layered canvases for optimal rendering
   private bgCanvas: HTMLCanvasElement;      // Static background grid
   private waveCanvas: HTMLCanvasElement;    // Waveform (changes on data update) 
-  private playheadCanvas: HTMLCanvasElement; // Playhead animation only
+  private playheadCanvas: HTMLCanvasElement; // Playhead animation only 
   
   private bgCtx: CanvasRenderingContext2D;
   private waveCtx: CanvasRenderingContext2D;
