@@ -582,8 +582,8 @@
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-primary);
-  /* Allow touch scrolling to propagate to children */
-  touch-action: pan-y;
+  /* Allow all touch actions - children will handle specifics */
+  touch-action: auto;
 }
 
 .mobile-effects-container .effects-rack {
@@ -633,20 +633,21 @@
   flex-direction: column;
   gap: var(--spacing-sm);
   padding: var(--spacing-sm);
-  overflow-y: auto;
+  overflow-y: scroll; /* Force scrollbar - auto may not work on some mobile browsers */
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
+  touch-action: pan-y pinch-zoom; /* Allow vertical scroll and zoom */
   overscroll-behavior: contain; /* Prevent scroll chaining to parent */
   /* Ensure scrollability on mobile */
   position: relative;
-  max-height: 100%;
 }
 
 /* Effect modules as horizontal cards */
 .mobile-effects-container .effect-module {
   width: 100%;
   flex-shrink: 0;
+  /* Allow scrolling to pass through, knobs handle their own touch */
+  touch-action: pan-y;
 }
 
 .mobile-effects-container .module-faceplate {
@@ -747,19 +748,22 @@
 
 .mobile-effects-container .add-effect-header {
   padding: var(--spacing-sm) var(--spacing-md);
-  min-height: 48px;
+  min-height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--spacing-sm);
   border: none;
-  background: transparent;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.2);
   cursor: pointer;
-  /* Ensure touch events work properly */
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: rgba(232, 168, 124, 0.2);
+  /* Ensure touch events work properly - no manipulation, use auto for better tap handling */
+  touch-action: auto;
+  -webkit-tap-highlight-color: rgba(232, 168, 124, 0.3);
   user-select: none;
   -webkit-user-select: none;
+  /* Make it more visually tappable */
+  margin: var(--spacing-xs);
 }
 
 .mobile-effects-container .add-effect-header:active {
@@ -788,18 +792,22 @@
   left: auto !important;
   right: auto !important;
   top: auto !important;
-  width: auto !important;
+  width: 100% !important;
   border: none;
   border-radius: 0;
   box-shadow: none;
   z-index: 100;
+  /* Ensure visibility */
+  visibility: hidden;
 }
 
 .mobile-effects-container .add-effect-dropdown.open .add-effect-panel {
-  max-height: 300px;
+  max-height: 50vh; /* Use viewport height for better mobile experience */
   overflow-y: auto;
   opacity: 1;
+  visibility: visible;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .mobile-effects-container .add-effect-dropdown.open .add-effect-header {
@@ -830,9 +838,9 @@
   border: 1px solid transparent;
   transition: all 0.15s ease;
   cursor: pointer;
-  /* Ensure touch events work properly */
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: rgba(232, 168, 124, 0.2);
+  /* Ensure touch events work properly - auto for better tap handling */
+  touch-action: auto;
+  -webkit-tap-highlight-color: rgba(232, 168, 124, 0.3);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -879,10 +887,19 @@
   .mobile-effects-container .effects-pedalboard {
     scroll-snap-type: y proximity;
     scroll-behavior: smooth;
+    /* Ensure scrolling works on touch devices */
+    -webkit-overflow-scrolling: touch;
   }
 
   .mobile-effects-container .effect-module {
     scroll-snap-align: start;
+    /* Allow scroll pass-through except for knobs */
+    touch-action: pan-y;
+  }
+  
+  /* Knobs need manipulation for drag control */
+  .mobile-effects-container .mini-knob {
+    touch-action: none;
   }
 
   /* Touch-friendly oscillator slots */

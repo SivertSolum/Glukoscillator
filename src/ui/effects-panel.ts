@@ -277,15 +277,27 @@ export class EffectsPanel {
     
     // Track if we should handle the click (to prevent double-firing on touch devices)
     let touchHandled = false;
+    let touchStartTime = 0;
+    
+    // Touch start - record time to distinguish taps from scrolls
+    header?.addEventListener('touchstart', (e) => {
+      touchStartTime = Date.now();
+      e.stopPropagation();
+    }, { passive: true });
     
     // Touch handler for mobile - more reliable than click on touch devices
     header?.addEventListener('touchend', (e) => {
       e.stopPropagation();
       e.preventDefault();
-      touchHandled = true;
-      this.toggleDropdown();
-      // Reset after a short delay
-      setTimeout(() => { touchHandled = false; }, 300);
+      
+      // Only trigger if it was a quick tap (not a scroll gesture)
+      const tapDuration = Date.now() - touchStartTime;
+      if (tapDuration < 300) {
+        touchHandled = true;
+        this.toggleDropdown();
+        // Reset after a short delay
+        setTimeout(() => { touchHandled = false; }, 300);
+      }
     }, { passive: false });
     
     // Click handler for desktop (and fallback)
@@ -331,15 +343,27 @@ export class EffectsPanel {
       
       // Track touch handling to prevent double-firing
       let touchHandled = false;
+      let itemTouchStartTime = 0;
+      
+      // Touch start - record time
+      item.addEventListener('touchstart', (e) => {
+        itemTouchStartTime = Date.now();
+        e.stopPropagation();
+      }, { passive: true });
       
       // Touch handler for mobile
       item.addEventListener('touchend', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        touchHandled = true;
-        this.addEffect(effectId);
-        this.closeDropdown();
-        setTimeout(() => { touchHandled = false; }, 300);
+        
+        // Only trigger if it was a quick tap
+        const tapDuration = Date.now() - itemTouchStartTime;
+        if (tapDuration < 300) {
+          touchHandled = true;
+          this.addEffect(effectId);
+          this.closeDropdown();
+          setTimeout(() => { touchHandled = false; }, 300);
+        }
       }, { passive: false });
       
       // Click handler for desktop (and fallback)
