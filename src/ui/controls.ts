@@ -2,25 +2,17 @@
 // Rotary knobs for synth parameters - inspired by vintage analog synths
 
 import type { ADSREnvelope, FilterSettings } from '../types';
-import { DEFAULT_ENVELOPE } from '../types';
+import { DEFAULT_ENVELOPE, FILTER_RANGES, cutoffToNormalized, normalizedToCutoff } from '../types';
 import { getSynth, GlucoseSynth } from '../synthesis/synth-engine';
 
-// Filter knob ranges
-const CUTOFF_MIN = 20;
-const CUTOFF_MAX = 18000;
-const RESONANCE_MIN = 0.5;
-const RESONANCE_MAX = 10;
-const FILTER_ENV_MAX = 6; // octaves
+// Filter knob ranges (shared with the glucose mapping)
+const RESONANCE_MIN = FILTER_RANGES.resonance.min;
+const RESONANCE_MAX = FILTER_RANGES.resonance.max;
+const FILTER_ENV_MAX = FILTER_RANGES.envAmount.max;
 
 // Cutoff knob is 0-1 on a log scale so the low end is usable
-function knobToCutoff(v: number): number {
-  return CUTOFF_MIN * Math.pow(CUTOFF_MAX / CUTOFF_MIN, Math.max(0, Math.min(1, v)));
-}
-
-function cutoffToKnob(hz: number): number {
-  const clamped = Math.max(CUTOFF_MIN, Math.min(CUTOFF_MAX, hz));
-  return Math.log(clamped / CUTOFF_MIN) / Math.log(CUTOFF_MAX / CUTOFF_MIN);
-}
+const knobToCutoff = normalizedToCutoff;
+const cutoffToKnob = cutoffToNormalized;
 
 export class SynthControls {
   private container: HTMLElement;

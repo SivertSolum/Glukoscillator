@@ -13,14 +13,14 @@ Glukoscillator is a browser-based synthesizer that converts continuous glucose m
 ## ✨ Features
 
 - **Wavetable Synthesis** — Each day's glucose data becomes a single-cycle waveform
-- **3 Oscillator Layers** — Mix up to 3 different days simultaneously, each with its own octave, semitone, fine-tune and pan
+- **3 Oscillator Layers** — Mix up to 3 different days simultaneously, each with its own octave, semitone, fine-tune, pan and unison (up to 4 stacked, detuned voices)
 - **15 Audio Effects** — Professional-quality effects chain (reverb, delay, chorus, distortion, etc.)
 - **Data-Driven Sound Design** — Effects and envelope automatically shaped by your glucose patterns
 - **MIDI Support** — Connect your MIDI keyboard for expressive control
 - **Virtual Piano** — Play with mouse/touch or QWERTY keyboard (2-6 octaves dynamically)
 - **Oscilloscope Display** — Real-time waveform visualization with glucose statistics
 - **Drag-and-Drop** — Simple CSV file loading
-- **Smart Randomize** — Generate sound combinations based on your glucose characteristics
+- **Smart Randomize** — Generate sound combinations based on your glucose characteristics; every set of days has a repeatable **Signature** sound, and **Mutate** explores variations
 - **ADSR Envelope** — Full attack, decay, sustain, release control (auto-adjusts to glucose data)
 - **Tone Section** — Per-voice lowpass filter with velocity-sensitive envelope, plus a Body control that keeps each day's pitch anchored
 - **Responsive Design** — Works on desktop and tablets

@@ -50,7 +50,9 @@ Glukoscillator/
     │   ├── synth-engine.ts    # GlucoseSynth, getSynth(); tuning, filter, body
     │   ├── effects-chain.ts   # 15 reorderable FX, getEffectsChain()
     │   ├── effects-config.ts  # Glucose-driven effect ranges
-    │   └── effects-types.ts
+    │   ├── voice-mapping.ts   # Glucose → filter, body, tuning, pan, unison
+    │   ├── random.ts          # Seeded RNG (signature sounds)
+│   └── effects-types.ts
     ├── input/
     │   ├── keyboard-handler.ts
     │   └── midi-handler.ts
@@ -99,7 +101,7 @@ No automated tests. Manual smoke test:
 1. Confirm sample data loads and waveforms appear in OSC mixer.
 2. Drag a LibreView CSV; verify day count and oscillator assignment.
 3. Play notes via piano, QWERTY keys, and MIDI (if available).
-4. Toggle effects and randomize; confirm envelope knobs sync.
+4. Toggle effects; Randomize, then Signature (same result again) and Mutate (same days, new sound); confirm envelope, TONE and tuning controls sync.
 5. Change oscillator Oct/Semi/Fine/Pan and the TONE knobs (Body, Cut, Res, Env, F.Dcy); confirm pitch/timbre respond.
 
 **Build / preview:**
@@ -130,7 +132,7 @@ npm run preview    # optional — smoke-test the production bundle
 
 - `parseLibreViewCSV(text)` → then `generateAllWavetables(data.days)` before updating UI
 - `getSynth()` — note on/off, envelope, oscillator levels/tuning and wavetables, `setFilter()`, `setBody()`
-- `getEffectsChain().randomizeFromGlucose(stats)` — glucose-driven FX + envelope (used by oscillator mixer randomize)
+- `getEffectsChain().randomizeFromGlucose(stats, rng)` and `computeVoiceFromGlucose(combined, perOsc, rng)` — glucose-driven FX and voice; pass a seeded `rng` from `createDaySignatureRandom()` (used by the oscillator mixer's Randomize / Signature / Mutate)
 - `createPianoKeyboard('piano-keyboard')` / `'mobile-piano-keyboard'` — parallel desktop/mobile instances
 
 ## Standards
@@ -161,7 +163,8 @@ mobileOscillatorMixer?.setData(glucoseData);
 **Common patterns:**
 
 - UI modules own DOM construction inside a container ID; `main.ts` wires callbacks and shared state.
-- Glucose metrics drive sound via `effects-config.ts` and `randomizeFromGlucose()` — read `docs/glucose-sound-design.md` before changing mapping logic.
+- Glucose metrics drive sound via `effects-config.ts`, `randomizeFromGlucose()` and `voice-mapping.ts` — read `docs/glucose-sound-design.md` before changing mapping logic. Use the passed-in `rng`, never `Math.random()`, inside mappings, and keep the call order fixed, or signature sounds change.
+- Desktop and mobile UI instances share element ids — scope DOM lookups to the component's container, not `document`.
 - Wavetable synthesis uses `computeHarmonicsFromWavetable()` — do not reimplement FFT elsewhere. Keep phase: build waves with `createPeriodicWave(real, imag)`, not Tone's sine-only `partials`.
 - Styles are split per component under `src/styles/`; import new sheets from `style.css`.
 - `verbatimModuleSyntax` is on — use `import type` for type-only imports.

@@ -26,7 +26,9 @@ glukoscillator/
     │   ├── wavetable.ts    # Glucose → waveform conversion + FFT harmonics
     │   ├── effects-chain.ts    # Modular effects routing + glucose-driven randomization
     │   ├── effects-config.ts   # Effect ranges, glucose metrics & normalization
-    │   └── effects-types.ts    # Effect parameter type definitions
+    │   ├── voice-mapping.ts    # Glucose → filter, body, tuning, pan, unison
+    │   ├── random.ts           # Seeded RNG for reproducible "signature" sounds
+│   └── effects-types.ts    # Effect parameter type definitions
     │
     ├── input/
     │   ├── keyboard-handler.ts # QWERTY keyboard → notes
@@ -117,13 +119,18 @@ The following diagram shows how glucose data flows through the application:
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    RANDOMIZE BUTTON                              │
+│        RANDOMIZE / SIGNATURE / MUTATE  (seeded by days + variation)│
 │  ┌─────────────────────────────┐  ┌─────────────────────────┐  │
 │  │     Effects Selection       │  │   Envelope Shaping      │  │
 │  │  • High chaos → Distortion  │  │  • Chaos → Attack/Decay │  │
 │  │  • Stable → Reverb/Chorus   │  │  • Range → Sustain      │  │
 │  │  • Poor TIR → AutoFilter    │  │  • TIR → Release        │  │
 │  └─────────────────────────────┘  └─────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  Voice (voice-mapping.ts)                                │  │
+│  │  • Chaos/avg → Cutoff   • TIR → Body, pan width          │  │
+│  │  • Day avg → Octave     • Calm → Unison stack            │  │
+│  └─────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
          │                        │
          └───────────┬────────────┘

@@ -73,6 +73,11 @@
 
 .dice-icon { font-size: 1rem; }
 
+.mixer-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
 .oscillator-slots {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -487,7 +492,7 @@
 
 
 /* =====================================================
-   OSCILLATOR TUNING - Octave/Semi steppers, Fine/Pan sliders
+   OSCILLATOR TUNING - Oct/Semi/Uni steppers, Fine/Pan/Spread sliders
    ===================================================== */
 .osc-tuning {
   display: flex;
@@ -499,8 +504,8 @@
 
 .osc-tuning-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
 }
 
 .osc-stepper,

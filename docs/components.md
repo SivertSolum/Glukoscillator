@@ -84,12 +84,12 @@ A polyphonic wavetable synthesizer built on [Tone.js](https://tonejs.github.io/)
 | Feature | Details |
 |---------|---------|
 | **Oscillators** | 3 independent layers, each with its own wavetable |
-| **Voice** | `WavetableVoice` (`wavetable-voice.ts`): PeriodicWave oscillator → 12 dB lowpass → amp envelope |
+| **Voice** | `WavetableVoice` (`wavetable-voice.ts`): 1–4 unison PeriodicWave oscillators → 12 dB lowpass → amp envelope |
 | **Polyphony** | 6 voices per oscillator (18 total) |
 | **Voice Allocation** | O(1) lookup using Set for available voices |
 | **Envelope** | Configurable ADSR (Attack, Decay, Sustain, Release) |
 | **Filter** | Per-voice lowpass + filter envelope (shared settings) |
-| **Tuning** | Per-oscillator octave (±2), semitone (±12), fine (±50 ct) and pan |
+| **Tuning** | Per-oscillator octave (±2), semitone (±12), fine (±50 ct), pan, unison (1–4 voices, 0–50 ct spread) |
 | **Body** | Fundamental reinforcement so weak-fundamental days stay in tune |
 | **Mixing** | Per-oscillator level control + automatic gain compensation |
 
@@ -128,7 +128,7 @@ Each note passes through an envelope shaper:
 - **Sustain** — Volume held while key is pressed (0 - 1)
 - **Release** — Time to fade after key release (0.001s - 4s)
 
-Each voice is `oscillator → lowpass filter → amp envelope`.
+Each voice is `oscillator(s) → lowpass filter → amp envelope`.
 
 ### Tone: Filter & Body
 
@@ -147,7 +147,17 @@ Defaults (open filter, no envelope) leave the raw wavetable unfiltered.
 
 ### Oscillator Tuning
 
-`setOscillatorTuning(index, { octave, semitone, fine, pan })` / `getOscillatorTuning(index)` (`OscillatorTuning` in `types.ts`). Pitch offsets are applied as oscillator detune in cents (also to sounding notes); pan uses a per-layer `Tone.Panner`.
+`setOscillatorTuning(index, { octave, semitone, fine, pan, unison, unisonDetune })` / `getOscillatorTuning(index)` (`OscillatorTuning` in `types.ts`). Pitch offsets are applied as oscillator detune in cents (also to sounding notes); pan uses a per-layer `Tone.Panner`.
+
+**Unison:** each voice can stack up to `MAX_UNISON` (4) oscillators, detuned symmetrically across `unisonDetune` cents and spread ±0.6 across the stereo field, summed at `1/√n` gain before the filter. Start times are staggered by a random fraction of a cycle so the copies don't begin phase-aligned. A new unison size applies from the next note; spread changes apply immediately. Cost: up to 72 oscillators at full polyphony (3 × 6 × 4).
+
+### Glucose-driven voice settings
+
+**Files:** `src/synthesis/voice-mapping.ts`, `src/synthesis/random.ts`
+
+- `computeVoiceFromGlucose(combined, perOscillator, rng)` → `{ filter, body, tunings[] }` — see [Glucose Sound Design](glucose-sound-design.md#voice-mapping).
+- `createDaySignatureRandom(dates, variation)` → seeded `RandomSource` (Mulberry32 seeded with an FNV-1a hash of the dates in slot order plus the variation). Variation `0` = signature.
+- `randomizeFromGlucose(stats, rng)` and `addRandomSpread(value, spread, rng)` take the same `rng`, so effects, envelope and voice are all reproducible together. Calls happen in a fixed order (effects → envelope → voice); keep it fixed or signatures change.
 
 ---
 
@@ -176,7 +186,7 @@ Defaults (open filter, no envelope) leave the raw wavetable unfiltered.
 |---------|-------------|
 | Drag-and-drop reordering | Change effect order in real-time |
 | Bypass optimization | Disabled effects use zero CPU |
-| Data-driven randomization | Effects chosen and tuned based on glucose patterns |
+| Data-driven randomization | Effects chosen and tuned based on glucose patterns (seeded: same days → same result) |
 | Persistence | Effect order saved to localStorage |
 
 ### Signal Flow
@@ -228,8 +238,11 @@ Three-channel mixer for layering different days' waveforms.
 **Features:**
 - Assign different days to each of 3 oscillator slots
 - Individual level control per oscillator
-- Octave and semitone steppers (double-click the value to reset)
-- Fine-tune and pan sliders (double-click to center)
+- **Randomize** (random days + their signature), **Signature** (current days' signature), **Mutate** (new variation of the current days)
+- Octave, semitone and unison steppers (double-click the value to reset)
+- Fine-tune, pan and unison spread sliders (double-click to reset)
+- `syncTuningFromSynth()` rebuilds the tuning controls from the synth; `main.ts` calls it on the other mixer instance after Randomize/Signature/Mutate
+- DOM lookups are scoped to the mixer's own container (desktop and mobile share element ids)
 - Visual feedback showing assigned waveform
 
 ---

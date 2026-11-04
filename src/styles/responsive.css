@@ -1005,15 +1005,13 @@
 
 
 
-/* Mobile: compact oscillator tuning (single row of 4) + tone section */
-#mobile-oscillator-mixer .osc-tuning {
-  flex-direction: row;
-  gap: 4px;
+/* Mobile: compact oscillator tuning + tone section */
+#mobile-oscillator-mixer .osc-tuning-row {
+  gap: 2px;
 }
 
-#mobile-oscillator-mixer .osc-tuning-row {
-  flex: 1;
-  gap: 2px;
+#mobile-oscillator-mixer .mixer-actions {
+  gap: 4px;
 }
 
 #mobile-oscillator-mixer .osc-stepper-btn {

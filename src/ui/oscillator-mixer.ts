@@ -17,6 +17,9 @@ import {
   ENVELOPE_RANGES,
   type GlucoseStatsWithVolatility,
 } from '../synthesis/effects-config';
+import { computeVoiceFromGlucose } from '../synthesis/voice-mapping';
+import { createDaySignatureRandom, type RandomSource } from '../synthesis/random';
+import { DEFAULT_TUNING, MAX_UNISON } from '../types';
 
 type OscillatorChangeCallback = (oscIndex: number, dayData: DailyGlucoseData | null) => void;
 
@@ -152,55 +155,116 @@ export class OscillatorMixer {
   }
 
   /**
-   * Randomize all oscillators and effects based on glucose data
-   * Effects and envelope are determined by the glucose characteristics of selected days
+   * Randomize: pick random days for all oscillators, then apply those days'
+   * signature sound (effects, envelope, filter, body, tuning, unison).
+   * The same days in the same slots always give the same signature.
    */
   randomize(): void {
     if (!this.data || this.data.days.size === 0) return;
-    
+
     const dates = Array.from(this.data.days.keys());
-    
+
     // Randomize oscillator wavetables
     for (let i = 0; i < 3; i++) {
       // Pick a random day (allow same day for multiple oscillators)
       const randomDate = dates[Math.floor(Math.random() * dates.length)];
       this.setOscillatorDay(i, randomDate);
     }
-    
-    // Collect glucose stats from all selected days
-    const statsArray = this.collectGlucoseStats();
-    
+
+    this.applyGlucoseSound(0);
+  }
+
+  /**
+   * Signature: apply the current days' signature sound (variation 0).
+   * Use after picking days by hand, or to return from a mutation.
+   */
+  applySignature(): void {
+    if (!this.data || this.data.days.size === 0) return;
+    if (this.selectedDays.every(d => !d)) {
+      this.randomize();
+      return;
+    }
+    this.applyGlucoseSound(0);
+  }
+
+  /**
+   * Mutate: keep the current days, apply a new variation of their sound.
+   * Same glucose-driven tendencies, different random spread/choices.
+   */
+  mutate(): void {
+    if (!this.data || this.data.days.size === 0) return;
+    if (this.selectedDays.every(d => !d)) {
+      this.randomize();
+      return;
+    }
+    // Variation 0 is the signature; mutations use any other value
+    const variation = 1 + Math.floor(Math.random() * 0x7ffffffe);
+    this.applyGlucoseSound(variation);
+  }
+
+  /**
+   * Apply glucose-driven sound for the currently selected days.
+   * Seeded from the days (+ variation) so results are reproducible.
+   */
+  private applyGlucoseSound(variation: number): void {
+    const perOscillator = this.collectOscillatorStats();
+    const statsArray = perOscillator.filter((s): s is GlucoseStatsWithVolatility => s !== null);
+
     if (statsArray.length > 0) {
+      const rng = createDaySignatureRandom(this.selectedDays, variation);
+
       // Combine stats from all active oscillators
       const combinedStats = combineGlucoseStats(statsArray);
-      
-      // Randomize effects based on glucose data
-      this.synth.getEffectsChain().randomizeFromGlucose(combinedStats);
-      
-      // Set envelope based on glucose data
-      this.setEnvelopeFromGlucose(combinedStats);
+
+      // Effects, envelope, then voice (filter, body, tuning) — fixed order keeps it reproducible
+      this.synth.getEffectsChain().randomizeFromGlucose(combinedStats, rng);
+      this.setEnvelopeFromGlucose(combinedStats, rng);
+
+      const voice = computeVoiceFromGlucose(combinedStats, perOscillator, rng);
+      this.synth.setFilter(voice.filter);
+      this.synth.setBody(voice.body);
+      voice.tunings.forEach((tuning, i) => {
+        if (tuning) this.synth.setOscillatorTuning(i, tuning);
+      });
+      this.syncTuningFromSynth();
     } else {
       // Fallback to random if no data
       this.synth.getEffectsChain().randomize();
     }
-    
+
     this.onRandomizeCallback?.();
   }
 
   /**
-   * Collect glucose stats with all computed metrics from all selected oscillator days
+   * Rebuild the tuning controls from the synth (after randomize, or when the
+   * other desktop/mobile mixer instance changed them)
    */
-  private collectGlucoseStats(): GlucoseStatsWithVolatility[] {
-    if (!this.data) return [];
-    
-    const statsArray: GlucoseStatsWithVolatility[] = [];
-    
+  syncTuningFromSynth(): void {
+    for (let i = 0; i < 3; i++) {
+      const slot = this.container.querySelector<HTMLElement>(`#osc-slot-${i}`);
+      const existing = slot?.querySelector('.osc-tuning');
+      if (existing) {
+        existing.replaceWith(this.createTuningControls(i));
+      }
+    }
+  }
+
+  /**
+   * Collect glucose stats with all computed metrics for each oscillator's day
+   * (null where an oscillator has no day)
+   */
+  private collectOscillatorStats(): (GlucoseStatsWithVolatility | null)[] {
+    if (!this.data) return [null, null, null];
+
+    const statsArray: (GlucoseStatsWithVolatility | null)[] = [];
+
     for (const date of this.selectedDays) {
-      if (!date) continue;
-      
-      const dayData = this.data.days.get(date);
-      if (!dayData) continue;
-      
+      const dayData = date ? this.data.days.get(date) : undefined;
+      if (!dayData) {
+        statsArray.push(null);
+        continue;
+      }
+
       // Compute all metrics from readings
       const volatility = computeVolatility(dayData.readings);
       const rateOfChange = computeRateOfChange(dayData.readings);
@@ -230,7 +294,7 @@ export class OscillatorMixer {
    * - High range = more extreme sustain
    * - Poor time-in-range = shorter release
    */
-  private setEnvelopeFromGlucose(stats: GlucoseStatsWithVolatility): void {
+  private setEnvelopeFromGlucose(stats: GlucoseStatsWithVolatility, rng: RandomSource): void {
     // Normalize all stats
     const volatilityNorm = normalizeGlucoseStat(stats.volatility, 'volatility');
     const avgNorm = normalizeGlucoseStat(stats.avg, 'average');
@@ -245,7 +309,7 @@ export class OscillatorMixer {
     const amplifiedChaos = amplifyValue(chaosMetric, 1.5); // Push toward extremes
     
     // High chaos = short attack (inverse relationship), add some randomness
-    const attackFactor = addRandomSpread(1 - amplifiedChaos, 0.15);
+    const attackFactor = addRandomSpread(1 - amplifiedChaos, 0.15, rng);
     const attack = scaleInRange(
       attackFactor,
       ENVELOPE_RANGES.attack.min,
@@ -253,7 +317,7 @@ export class OscillatorMixer {
     );
     
     // High chaos = short decay, influenced by rate of change
-    const decayFactor = addRandomSpread(1 - amplifyValue((chaosMetric + rocNorm) / 2, 1.8), 0.15);
+    const decayFactor = addRandomSpread(1 - amplifyValue((chaosMetric + rocNorm) / 2, 1.8), 0.15, rng);
     const decay = scaleInRange(
       decayFactor,
       ENVELOPE_RANGES.decay.min,
@@ -263,7 +327,7 @@ export class OscillatorMixer {
     // Sustain based on average and range - extreme glucose = lower sustain
     // High range or high average = less stable sustained sound
     const stabilityMetric = (1 - rangeNorm + 1 - avgNorm + tirNorm) / 3;
-    const sustainFactor = addRandomSpread(amplifyValue(stabilityMetric, 1.3), 0.2);
+    const sustainFactor = addRandomSpread(amplifyValue(stabilityMetric, 1.3), 0.2, rng);
     const sustain = scaleInRange(
       sustainFactor,
       ENVELOPE_RANGES.sustain.min,
@@ -273,7 +337,7 @@ export class OscillatorMixer {
     // Release based on time-in-range and volatility
     // Good TIR + low volatility = longer, more pleasant release
     const pleasantnessMetric = (tirNorm + (1 - volatilityNorm)) / 2;
-    const releaseFactor = addRandomSpread(amplifyValue(pleasantnessMetric, 1.5), 0.15);
+    const releaseFactor = addRandomSpread(amplifyValue(pleasantnessMetric, 1.5), 0.15, rng);
     const release = scaleInRange(
       releaseFactor,
       ENVELOPE_RANGES.release.min,
@@ -291,7 +355,7 @@ export class OscillatorMixer {
     this.closeAllDropdowns();
     this.openDropdownIndex = oscIndex;
     
-    const slot = document.getElementById(`osc-slot-${oscIndex}`);
+    const slot = this.container.querySelector<HTMLElement>(`#osc-slot-${oscIndex}`);
     slot?.classList.add('dropdown-open');
     
     // Hide waveform preview when dropdown is open
@@ -303,7 +367,7 @@ export class OscillatorMixer {
    */
   private closeAllDropdowns(): void {
     this.openDropdownIndex = -1;
-    document.querySelectorAll('.oscillator-slot').forEach(s => {
+    this.container.querySelectorAll('.oscillator-slot').forEach(s => {
       s.classList.remove('dropdown-open');
     });
   }
@@ -526,9 +590,17 @@ export class OscillatorMixer {
     header.className = 'mixer-header';
     header.innerHTML = `
       <h3>Oscillators</h3>
-      <button id="randomize-btn" class="randomize-btn" title="Randomize oscillator wavetables">
-        <span class="dice-icon">🎲</span> Randomize
-      </button>
+      <div class="mixer-actions">
+        <button class="randomize-btn signature-btn" title="Apply these days' signature sound (always the same for the same days)">
+          <span class="dice-icon">◉</span> Signature
+        </button>
+        <button class="randomize-btn mutate-btn" title="Keep these days, try a new variation of their sound">
+          <span class="dice-icon">🧬</span> Mutate
+        </button>
+        <button id="randomize-btn" class="randomize-btn" title="Pick random days and apply their signature sound">
+          <span class="dice-icon">🎲</span> Randomize
+        </button>
+      </div>
     `;
     this.container.appendChild(header);
 
@@ -550,6 +622,34 @@ export class OscillatorMixer {
         e.stopPropagation();
         e.preventDefault();
         this.randomize();
+      }, { passive: false });
+    }
+
+    const signatureBtn = header.querySelector('.signature-btn');
+    if (signatureBtn) {
+      signatureBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        this.applySignature();
+      });
+      signatureBtn.addEventListener('touchend', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        this.applySignature();
+      }, { passive: false });
+    }
+
+    const mutateBtn = header.querySelector('.mutate-btn');
+    if (mutateBtn) {
+      mutateBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        this.mutate();
+      });
+      mutateBtn.addEventListener('touchend', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        this.mutate();
       }, { passive: false });
     }
 
@@ -705,7 +805,7 @@ export class OscillatorMixer {
   }
   
   /**
-   * Create octave/semitone steppers and fine/pan sliders for an oscillator
+   * Create octave/semitone/unison steppers and fine/pan/spread sliders for an oscillator
    */
   private createTuningControls(index: number): HTMLElement {
     const tuning = this.synth.getOscillatorTuning(index);
@@ -723,6 +823,9 @@ export class OscillatorMixer {
     steppers.appendChild(this.createStepper('Semi', tuning.semitone, -12, 12, (v) => {
       this.synth.setOscillatorTuning(index, { semitone: v });
     }));
+    steppers.appendChild(this.createStepper('Uni', tuning.unison, 1, MAX_UNISON, (v) => {
+      this.synth.setOscillatorTuning(index, { unison: v });
+    }, DEFAULT_TUNING.unison));
     container.appendChild(steppers);
 
     const sliders = document.createElement('div');
@@ -733,7 +836,10 @@ export class OscillatorMixer {
     sliders.appendChild(this.createTuningSlider('Pan', Math.round(tuning.pan * 100), -100, 100, (v) => {
       this.synth.setOscillatorTuning(index, { pan: v / 100 });
     }));
-    container.appendChild(sliders);
+    sliders.appendChild(this.createTuningSlider('Spread', Math.round(tuning.unisonDetune), 0, 50, (v) => {
+      this.synth.setOscillatorTuning(index, { unisonDetune: v });
+    }, DEFAULT_TUNING.unisonDetune));
+container.appendChild(sliders);
 
     return container;
   }
@@ -746,7 +852,8 @@ export class OscillatorMixer {
     value: number,
     min: number,
     max: number,
-    onChange: (value: number) => void
+    onChange: (value: number) => void,
+    resetValue: number = 0
   ): HTMLElement {
     const wrapper = document.createElement('div');
     wrapper.className = 'osc-stepper';
@@ -776,7 +883,7 @@ export class OscillatorMixer {
     let current = value;
     const update = (next: number) => {
       current = Math.max(min, Math.min(max, next));
-      display.textContent = current > 0 ? `+${current}` : String(current);
+      display.textContent = min < 0 && current > 0 ? `+${current}` : String(current);
       down.disabled = current <= min;
       up.disabled = current >= max;
     };
@@ -785,7 +892,7 @@ export class OscillatorMixer {
     down.addEventListener('click', () => { update(current - 1); onChange(current); });
     up.addEventListener('click', () => { update(current + 1); onChange(current); });
     // Double-click the value to reset
-    display.addEventListener('dblclick', () => { update(0); onChange(0); });
+    display.addEventListener('dblclick', () => { update(resetValue); onChange(current); });
 
     controls.append(down, display, up);
     wrapper.append(labelEl, controls);
@@ -793,14 +900,15 @@ export class OscillatorMixer {
   }
 
   /**
-   * Compact bipolar slider; double-click resets to center
+   * Compact slider; double-click resets (to center for bipolar controls)
    */
   private createTuningSlider(
     label: string,
     value: number,
     min: number,
     max: number,
-    onChange: (value: number) => void
+    onChange: (value: number) => void,
+    resetValue: number = 0
   ): HTMLElement {
     const wrapper = document.createElement('div');
     wrapper.className = 'osc-tuning-slider';
@@ -816,15 +924,15 @@ export class OscillatorMixer {
     slider.step = '1';
     slider.value = String(value);
     slider.className = 'level-slider';
-    slider.title = `${label} (double-click to center)`;
+    slider.title = `${label} (double-click to reset)`;
 
     slider.addEventListener('input', (e) => {
       e.stopPropagation();
       onChange(parseInt(slider.value));
     });
     slider.addEventListener('dblclick', () => {
-      slider.value = '0';
-      onChange(0);
+      slider.value = String(resetValue);
+      onChange(resetValue);
     });
 
     wrapper.append(labelEl, slider);
@@ -930,8 +1038,9 @@ export class OscillatorMixer {
    * Update a single oscillator slot display
    */
   private updateOscillatorDisplay(index: number): void {
-    const waveContainer = document.getElementById(`osc-wave-${index}`);
-    const dayLabel = document.getElementById(`osc-day-${index}`);
+    // Scoped to this instance: desktop and mobile mixers share element ids
+    const waveContainer = this.container.querySelector<HTMLElement>(`#osc-wave-${index}`);
+    const dayLabel = this.container.querySelector<HTMLElement>(`#osc-day-${index}`);
     
     const info = this.synth.getOscillatorInfo(index);
     
@@ -948,7 +1057,7 @@ export class OscillatorMixer {
     }
     
     // Update dropdown selection state
-    const dropdown = document.getElementById(`osc-dropdown-${index}`);
+    const dropdown = this.container.querySelector<HTMLElement>(`#osc-dropdown-${index}`);
     if (dropdown) {
       const items = dropdown.querySelectorAll('.osc-day-item');
       items.forEach(item => {

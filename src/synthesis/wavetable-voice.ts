@@ -1,23 +1,40 @@
 // Wavetable Voice
-// One polyphonic voice: PeriodicWave oscillator → lowpass filter → amp envelope.
+// One polyphonic voice: PeriodicWave oscillator(s) → lowpass filter → amp envelope.
 //
 // Tone.Synth/Tone.Oscillator only accept sine-partial amplitudes, which throws
 // away harmonic phase. This voice drives Tone's low-level ToneOscillatorNode
 // with a full PeriodicWave (real + imag) so the played waveform matches the
 // glucose curve, and adds a per-voice filter with its own envelope.
+//
+// Unison: up to MAX_UNISON oscillators per voice, detuned symmetrically and
+// spread across the stereo field, summed before the filter.
 
 import * as Tone from 'tone';
 import type { ADSREnvelope, FilterSettings } from '../types';
+import { MAX_UNISON } from '../types';
 
-// Extra time after the amp release before the oscillator is stopped
+// Extra time after the amp release before the oscillators are stopped
 const STOP_TAIL = 0.05;
 
+// Stereo width of the outermost unison oscillators (-1..1)
+const UNISON_PAN_WIDTH = 0.6;
+
+/** Oscillators started together for one note */
+interface OscGroup {
+  oscs: Tone.ToneOscillatorNode[];
+  remaining: number;
+}
+
 export class WavetableVoice {
-  private osc: Tone.ToneOscillatorNode | null = null;
+  private group: OscGroup | null = null;
   private wave: PeriodicWave | null = null;
   private detuneCents = 0;
+  private unison = 1;
+  private unisonDetune = 0;
   private releaseTime: number;
 
+  private readonly unisonPanners: Tone.Panner[] = [];
+  private readonly unisonGain: Tone.Gain;
   private readonly filter: Tone.Filter;
   private readonly filterEnv: Tone.FrequencyEnvelope;
   private readonly ampEnv: Tone.AmplitudeEnvelope;
@@ -51,20 +68,36 @@ export class WavetableVoice {
       octaves: filter.envAmount,
     });
     this.filterEnv.connect(this.filter.frequency);
+
+    // Unison oscillators → own panner → shared gain (level compensation) → filter
+    this.unisonGain = new Tone.Gain(1).connect(this.filter);
+    for (let i = 0; i < MAX_UNISON; i++) {
+      this.unisonPanners.push(new Tone.Panner(0).connect(this.unisonGain));
+    }
+    this.applyUnisonLayout();
   }
 
   setWave(wave: PeriodicWave | null): void {
     this.wave = wave;
-    if (wave && this.osc) {
-      this.osc.setPeriodicWave(wave);
+    if (wave && this.group) {
+      for (const osc of this.group.oscs) osc.setPeriodicWave(wave);
     }
   }
 
   setDetune(cents: number): void {
     this.detuneCents = cents;
-    if (this.osc) {
-      this.osc.detune.value = cents;
-    }
+    this.applyGroupDetune();
+  }
+
+  /**
+   * Set unison size and spread. A new size applies from the next note;
+   * spread (and pan layout for the current size) apply immediately.
+   */
+  setUnison(voices: number, detuneCents: number): void {
+    this.unison = Math.max(1, Math.min(MAX_UNISON, Math.round(voices)));
+    this.unisonDetune = Math.max(0, detuneCents);
+    this.applyUnisonLayout();
+    this.applyGroupDetune();
   }
 
   setEnvelope(envelope: ADSREnvelope): void {
@@ -87,24 +120,21 @@ export class WavetableVoice {
   triggerAttack(frequency: number, time: number, velocity: number): void {
     if (!this.wave) return;
 
-    if (this.osc && this.osc.getStateAtTime(time) === 'started') {
-      // Retriggered during release: keep the running oscillator (no phase
-      // reset, no click) and cancel its scheduled stop.
-      this.osc.cancelStop();
-      this.osc.frequency.setValueAtTime(frequency, time);
+    const running = this.group;
+    if (running && running.oscs.length === this.unison && running.oscs[0].getStateAtTime(time) === 'started') {
+      // Retriggered during release with the same unison size: keep the
+      // running oscillators (no phase reset, no click) and cancel their stop.
+      for (const osc of running.oscs) {
+        osc.cancelStop();
+        osc.frequency.setValueAtTime(frequency, time);
+      }
     } else {
-      const osc = new Tone.ToneOscillatorNode({
-        frequency,
-        detune: this.detuneCents,
-        onended: () => {
-          // OneShotSource disposes itself after onended
-          if (this.osc === osc) this.osc = null;
-        },
-      });
-      osc.setPeriodicWave(this.wave);
-      osc.connect(this.filter);
-      osc.start(time);
-      this.osc = osc;
+      if (running) {
+        for (const osc of running.oscs) {
+          if (osc.getStateAtTime(time) === 'started') osc.stop(time);
+        }
+      }
+      this.group = this.startGroup(frequency, time);
     }
 
     // Velocity scales both loudness and how far the filter opens
@@ -115,16 +145,74 @@ export class WavetableVoice {
   triggerRelease(time: number): void {
     this.ampEnv.triggerRelease(time);
     this.filterEnv.triggerRelease(time);
-    if (this.osc && this.osc.getStateAtTime(time) === 'started') {
-      this.osc.stop(time + this.releaseTime + STOP_TAIL);
+    if (this.group) {
+      for (const osc of this.group.oscs) {
+        if (osc.getStateAtTime(time) === 'started') {
+          osc.stop(time + this.releaseTime + STOP_TAIL);
+        }
+      }
     }
   }
 
   dispose(): void {
-    this.osc?.dispose();
-    this.osc = null;
+    if (this.group) {
+      for (const osc of this.group.oscs) osc.dispose();
+    }
+    this.group = null;
     this.filterEnv.dispose();
     this.filter.dispose();
     this.ampEnv.dispose();
+    this.unisonGain.dispose();
+    for (const panner of this.unisonPanners) panner.dispose();
+  }
+
+  private startGroup(frequency: number, time: number): OscGroup {
+    const wave = this.wave!;
+    const group: OscGroup = { oscs: [], remaining: this.unison };
+    const period = 1 / frequency;
+
+    for (let i = 0; i < this.unison; i++) {
+      const osc = new Tone.ToneOscillatorNode({
+        frequency,
+        detune: this.detuneCents + this.unisonOffset(i, this.unison),
+        onended: () => {
+          // OneShotSource disposes itself after onended
+          group.remaining--;
+          if (group.remaining <= 0 && this.group === group) this.group = null;
+        },
+      });
+      osc.setPeriodicWave(wave);
+      osc.connect(this.unisonPanners[i]);
+      // Stagger unison starts by a random fraction of a cycle so the copies
+      // don't begin phase-aligned (avoids a summed spike at note-on)
+      osc.start(i === 0 ? time : time + Math.random() * period);
+      group.oscs.push(osc);
+    }
+
+    return group;
+  }
+
+  /** Cents offset for unison oscillator i of n, spread symmetrically */
+  private unisonOffset(i: number, n: number): number {
+    if (n <= 1) return 0;
+    return this.unisonDetune * (i / (n - 1) - 0.5);
+  }
+
+  private applyGroupDetune(): void {
+    if (!this.group) return;
+    const n = this.group.oscs.length;
+    this.group.oscs.forEach((osc, i) => {
+      osc.detune.value = this.detuneCents + this.unisonOffset(i, n);
+    });
+  }
+
+  private applyUnisonLayout(): void {
+    const n = this.unison;
+    for (let i = 0; i < MAX_UNISON; i++) {
+      const pan = n <= 1 ? 0 : UNISON_PAN_WIDTH * (2 * i / (n - 1) - 1);
+      this.unisonPanners[i].pan.value = i < n ? pan : 0;
+    }
+    // Uncorrelated (detuned) copies add roughly by power
+    this.unisonGain.gain.value = 1 / Math.sqrt(n);
   }
 }
