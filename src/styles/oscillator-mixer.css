@@ -485,3 +485,86 @@
   height: 100%;
 }
 
+
+/* =====================================================
+   OSCILLATOR TUNING - Octave/Semi steppers, Fine/Pan sliders
+   ===================================================== */
+.osc-tuning {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  cursor: default;
+}
+
+.osc-tuning-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.osc-stepper,
+.osc-tuning-slider {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.osc-stepper .level-label,
+.osc-tuning-slider .level-label {
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}
+
+.osc-stepper-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.osc-stepper-btn {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  line-height: 1;
+  color: var(--text-secondary);
+  background: linear-gradient(180deg, var(--metal-light) 0%, var(--metal-mid) 100%);
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.osc-stepper-btn:hover:not(:disabled) {
+  color: var(--accent-primary);
+}
+
+.osc-stepper-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.osc-stepper-value {
+  min-width: 22px;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  text-align: center;
+  color: var(--accent-primary);
+  user-select: none;
+}
+
+.osc-tuning-slider .level-slider {
+  height: 4px;
+}
+
+.osc-tuning-slider .level-slider::-webkit-slider-thumb {
+  width: 10px;
+  height: 10px;
+}

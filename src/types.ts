@@ -47,6 +47,39 @@ export const DEFAULT_ENVELOPE: ADSREnvelope = {
   release: 0.3,
 };
 
+// Per-voice lowpass filter + filter envelope (shared by all oscillators)
+export interface FilterSettings {
+  cutoff: number;     // Hz — resting cutoff
+  resonance: number;  // Q
+  envAmount: number;  // octaves the filter envelope sweeps above cutoff
+  envDecay: number;   // seconds for the sweep to fall back to cutoff
+}
+
+export const DEFAULT_FILTER: FilterSettings = {
+  cutoff: 18000,
+  resonance: 0.7,
+  envAmount: 0,
+  envDecay: 0.4,
+};
+
+// Per-oscillator pitch offset and stereo position
+export interface OscillatorTuning {
+  octave: number;    // -2..+2
+  semitone: number;  // -12..+12
+  fine: number;      // cents, -50..+50
+  pan: number;       // -1 (left)..+1 (right)
+}
+
+export const DEFAULT_TUNING: OscillatorTuning = {
+  octave: 0,
+  semitone: 0,
+  fine: 0,
+  pan: 0,
+};
+
+// Default fundamental reinforcement (see applyFundamentalBody in wavetable.ts)
+export const DEFAULT_BODY = 0.5;
+
 // Glucose target range (mg/dL)
 export const GLUCOSE_RANGE = {
   low: 70,

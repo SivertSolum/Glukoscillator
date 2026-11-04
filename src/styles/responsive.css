@@ -1004,3 +1004,28 @@
 }
 
 
+
+/* Mobile: compact oscillator tuning (single row of 4) + tone section */
+#mobile-oscillator-mixer .osc-tuning {
+  flex-direction: row;
+  gap: 4px;
+}
+
+#mobile-oscillator-mixer .osc-tuning-row {
+  flex: 1;
+  gap: 2px;
+}
+
+#mobile-oscillator-mixer .osc-stepper-btn {
+  width: 20px;
+  height: 20px;
+}
+
+#mobile-oscillator-mixer .osc-stepper-value {
+  min-width: 18px;
+  font-size: 0.5rem;
+}
+
+.mobile-synth-controls .tone-section {
+  flex: 1 0 100%;
+}

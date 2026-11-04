@@ -1,14 +1,33 @@
 // ADSR and Volume Controls
 // Rotary knobs for synth parameters - inspired by vintage analog synths
 
-import type { ADSREnvelope } from '../types';
+import type { ADSREnvelope, FilterSettings } from '../types';
 import { DEFAULT_ENVELOPE } from '../types';
 import { getSynth, GlucoseSynth } from '../synthesis/synth-engine';
+
+// Filter knob ranges
+const CUTOFF_MIN = 20;
+const CUTOFF_MAX = 18000;
+const RESONANCE_MIN = 0.5;
+const RESONANCE_MAX = 10;
+const FILTER_ENV_MAX = 6; // octaves
+
+// Cutoff knob is 0-1 on a log scale so the low end is usable
+function knobToCutoff(v: number): number {
+  return CUTOFF_MIN * Math.pow(CUTOFF_MAX / CUTOFF_MIN, Math.max(0, Math.min(1, v)));
+}
+
+function cutoffToKnob(hz: number): number {
+  const clamped = Math.max(CUTOFF_MIN, Math.min(CUTOFF_MAX, hz));
+  return Math.log(clamped / CUTOFF_MIN) / Math.log(CUTOFF_MAX / CUTOFF_MIN);
+}
 
 export class SynthControls {
   private container: HTMLElement;
   private envelope: ADSREnvelope = { ...DEFAULT_ENVELOPE };
   private volume: number = 0.7;
+  private filter: FilterSettings;
+  private body: number;
   private activeKnob: HTMLElement | null = null;
   private startY: number = 0;
   private startValue: number = 0;
@@ -29,6 +48,8 @@ export class SynthControls {
     
     // Cache synth reference
     this.synth = getSynth();
+    this.filter = this.synth.getFilter();
+    this.body = this.synth.getBody();
 
     // Global mouse handlers for knob dragging
     this.handleMouseMove = this.handleMouseMove.bind(this);
@@ -110,6 +131,48 @@ export class SynthControls {
     volumeSection.appendChild(volumeKnob);
 
     faceplate.appendChild(volumeSection);
+
+    // Tone Section: fundamental body + per-voice lowpass filter
+    const toneSection = document.createElement('div');
+    toneSection.className = 'controls-section tone-section';
+    toneSection.innerHTML = `
+      <div class="section-label">
+        <span class="label-text">TONE</span>
+        <div class="section-line"></div>
+      </div>
+    `;
+
+    const toneControls = document.createElement('div');
+    toneControls.className = 'adsr-controls tone-controls';
+
+    toneControls.appendChild(this.createKnob('body', 'BODY', 0, 1, this.body, (v) => {
+      this.body = v;
+      this.synth.setBody(v);
+    }));
+
+    toneControls.appendChild(this.createKnob('cutoff', 'CUT', 0, 1, cutoffToKnob(this.filter.cutoff), (v) => {
+      this.filter.cutoff = knobToCutoff(v);
+      this.synth.setFilter({ cutoff: this.filter.cutoff });
+    }));
+
+    toneControls.appendChild(this.createKnob('resonance', 'RES', RESONANCE_MIN, RESONANCE_MAX, this.filter.resonance, (v) => {
+      this.filter.resonance = v;
+      this.synth.setFilter({ resonance: v });
+    }));
+
+    toneControls.appendChild(this.createKnob('filterenv', 'ENV', 0, FILTER_ENV_MAX, this.filter.envAmount, (v) => {
+      this.filter.envAmount = v;
+      this.synth.setFilter({ envAmount: v });
+    }));
+
+    toneControls.appendChild(this.createKnob('filterdecay', 'F.DCY', 0.01, 2, this.filter.envDecay, (v) => {
+      this.filter.envDecay = v;
+      this.synth.setFilter({ envDecay: v });
+    }));
+
+    toneSection.appendChild(toneControls);
+    faceplate.appendChild(toneSection);
+
     this.container.appendChild(faceplate);
 
     // Apply initial values to synth
@@ -287,10 +350,7 @@ export class SynthControls {
 
     // Update value display
     const id = knob.id.replace('knob-', '');
-    const valueDisplay = document.getElementById(`knob-value-${id}`);
-    if (valueDisplay) {
-      valueDisplay.textContent = this.formatValue(newValue, id);
-    }
+    this.updateValueDisplay(id, newValue);
 
     // Throttle audio parameter updates using requestAnimationFrame
     this.pendingUpdate = () => onChange(newValue);
@@ -377,7 +437,7 @@ export class SynthControls {
    * Update value display for a knob
    */
   private updateValueDisplay(id: string, value: number): void {
-    const valueDisplay = document.getElementById(`knob-value-${id}`);
+    const valueDisplay = this.container.querySelector<HTMLElement>(`#knob-value-${id}`);
     if (valueDisplay) {
       valueDisplay.textContent = this.formatValue(value, id);
     }
@@ -395,7 +455,17 @@ export class SynthControls {
    * Format value for display
    */
   private formatValue(value: number, type: string): string {
-    if (type === 'sustain' || type === 'volume') {
+    if (type === 'cutoff') {
+      const hz = knobToCutoff(value);
+      return hz >= 1000 ? `${(hz / 1000).toFixed(1)}k` : `${Math.round(hz)}Hz`;
+    }
+    if (type === 'resonance') {
+      return `Q${value.toFixed(1)}`;
+    }
+    if (type === 'filterenv') {
+      return `${value.toFixed(1)}oct`;
+    }
+    if (type === 'sustain' || type === 'volume' || type === 'body') {
       return `${Math.round(value * 100)}%`;
     }
     if (value < 0.01) {
@@ -449,8 +519,9 @@ export class SynthControls {
    * Update a single knob's visual state without re-rendering
    */
   private updateKnobVisual(id: string, value: number, min: number, max: number): void {
-    const knob = document.getElementById(`knob-${id}`);
-    const valueDisplay = document.getElementById(`knob-value-${id}`);
+    // Scoped to this instance: desktop and mobile controls share knob ids
+    const knob = this.container.querySelector<HTMLElement>(`#knob-${id}`);
+    const valueDisplay = this.container.querySelector<HTMLElement>(`#knob-value-${id}`);
     
     if (knob) {
       // Clamp value to valid range
@@ -480,6 +551,14 @@ export class SynthControls {
     this.updateKnobVisual('decay', this.envelope.decay, 0.001, 2);
     this.updateKnobVisual('sustain', this.envelope.sustain, 0, 1);
     this.updateKnobVisual('release', this.envelope.release, 0.001, 4);
+
+    this.filter = this.synth.getFilter();
+    this.body = this.synth.getBody();
+    this.updateKnobVisual('body', this.body, 0, 1);
+    this.updateKnobVisual('cutoff', cutoffToKnob(this.filter.cutoff), 0, 1);
+    this.updateKnobVisual('resonance', this.filter.resonance, RESONANCE_MIN, RESONANCE_MAX);
+    this.updateKnobVisual('filterenv', this.filter.envAmount, 0, FILTER_ENV_MAX);
+    this.updateKnobVisual('filterdecay', this.filter.envDecay, 0.01, 2);
   }
 }
 

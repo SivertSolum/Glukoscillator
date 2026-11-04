@@ -40,4 +40,11 @@ Production: [https://glukoscillator.vercel.app/](https://glukoscillator.vercel.a
 
 ## Test
 
-No automated tests. Load a sample LibreView CSV in the browser and verify audio output manually.
+No automated tests. Load a sample LibreView CSV in the browser and verify audio output manually:
+
+1. Sample data loads and waveforms appear in the OSC mixer.
+2. Notes play from the piano, QWERTY keys and MIDI (if available).
+3. Oscillator Oct/Semi/Fine/Pan change pitch and stereo position.
+4. TONE knobs respond: Cut darkens, Res adds a peak, Env + F.Dcy give a plucky sweep, Body steadies pitch on weak-fundamental days.
+5. Effects toggle and Randomize updates effects and envelope knobs.
+6. Check the mobile Osc tab (narrow touch viewport) as well as desktop.

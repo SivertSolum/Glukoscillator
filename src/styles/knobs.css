@@ -250,3 +250,16 @@
   box-shadow: 0 0 4px var(--accent-primary);
 }
 
+
+/* =====================================================
+   TONE SECTION - Body + filter, on its own row under envelope/master
+   ===================================================== */
+.synth-rack .controls-faceplate {
+  flex-wrap: wrap;
+}
+
+.tone-section {
+  flex: 1 0 100%;
+  padding-top: var(--spacing-xs);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}

@@ -642,6 +642,9 @@ export class OscillatorMixer {
     levelContainer.appendChild(levelSlider);
     slot.appendChild(levelContainer);
 
+    // Pitch offset + pan
+    slot.appendChild(this.createTuningControls(index));
+
     // Clear button
     const clearBtn = document.createElement('button');
     clearBtn.className = 'osc-clear-btn';
@@ -658,7 +661,8 @@ export class OscillatorMixer {
     slot.addEventListener('click', (e) => {
       // Don't toggle if clicking on slider, clear button, dropdown panel, or mixer header
       const target = e.target as HTMLElement;
-      if (target.closest('.osc-level') || 
+      if (target.closest('.osc-level') ||
+          target.closest('.osc-tuning') ||
           target.closest('.osc-clear-btn') ||
           target.closest('.osc-dropdown-panel') ||
           target.closest('.mixer-header') ||
@@ -700,6 +704,133 @@ export class OscillatorMixer {
     return slot;
   }
   
+  /**
+   * Create octave/semitone steppers and fine/pan sliders for an oscillator
+   */
+  private createTuningControls(index: number): HTMLElement {
+    const tuning = this.synth.getOscillatorTuning(index);
+
+    const container = document.createElement('div');
+    container.className = 'osc-tuning';
+    // Keep interactions here from opening the day dropdown
+    container.addEventListener('click', (e) => e.stopPropagation());
+
+    const steppers = document.createElement('div');
+    steppers.className = 'osc-tuning-row';
+    steppers.appendChild(this.createStepper('Oct', tuning.octave, -2, 2, (v) => {
+      this.synth.setOscillatorTuning(index, { octave: v });
+    }));
+    steppers.appendChild(this.createStepper('Semi', tuning.semitone, -12, 12, (v) => {
+      this.synth.setOscillatorTuning(index, { semitone: v });
+    }));
+    container.appendChild(steppers);
+
+    const sliders = document.createElement('div');
+    sliders.className = 'osc-tuning-row';
+    sliders.appendChild(this.createTuningSlider('Fine', tuning.fine, -50, 50, (v) => {
+      this.synth.setOscillatorTuning(index, { fine: v });
+    }));
+    sliders.appendChild(this.createTuningSlider('Pan', Math.round(tuning.pan * 100), -100, 100, (v) => {
+      this.synth.setOscillatorTuning(index, { pan: v / 100 });
+    }));
+    container.appendChild(sliders);
+
+    return container;
+  }
+
+  /**
+   * Compact −/+ stepper for integer values
+   */
+  private createStepper(
+    label: string,
+    value: number,
+    min: number,
+    max: number,
+    onChange: (value: number) => void
+  ): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'osc-stepper';
+
+    const labelEl = document.createElement('span');
+    labelEl.className = 'level-label';
+    labelEl.textContent = label;
+
+    const controls = document.createElement('div');
+    controls.className = 'osc-stepper-controls';
+
+    const down = document.createElement('button');
+    down.type = 'button';
+    down.className = 'osc-stepper-btn';
+    down.textContent = '−';
+    down.setAttribute('aria-label', `${label} down`);
+
+    const display = document.createElement('span');
+    display.className = 'osc-stepper-value';
+
+    const up = document.createElement('button');
+    up.type = 'button';
+    up.className = 'osc-stepper-btn';
+    up.textContent = '+';
+    up.setAttribute('aria-label', `${label} up`);
+
+    let current = value;
+    const update = (next: number) => {
+      current = Math.max(min, Math.min(max, next));
+      display.textContent = current > 0 ? `+${current}` : String(current);
+      down.disabled = current <= min;
+      up.disabled = current >= max;
+    };
+    update(current);
+
+    down.addEventListener('click', () => { update(current - 1); onChange(current); });
+    up.addEventListener('click', () => { update(current + 1); onChange(current); });
+    // Double-click the value to reset
+    display.addEventListener('dblclick', () => { update(0); onChange(0); });
+
+    controls.append(down, display, up);
+    wrapper.append(labelEl, controls);
+    return wrapper;
+  }
+
+  /**
+   * Compact bipolar slider; double-click resets to center
+   */
+  private createTuningSlider(
+    label: string,
+    value: number,
+    min: number,
+    max: number,
+    onChange: (value: number) => void
+  ): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'osc-tuning-slider';
+
+    const labelEl = document.createElement('span');
+    labelEl.className = 'level-label';
+    labelEl.textContent = label;
+
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = String(min);
+    slider.max = String(max);
+    slider.step = '1';
+    slider.value = String(value);
+    slider.className = 'level-slider';
+    slider.title = `${label} (double-click to center)`;
+
+    slider.addEventListener('input', (e) => {
+      e.stopPropagation();
+      onChange(parseInt(slider.value));
+    });
+    slider.addEventListener('dblclick', () => {
+      slider.value = '0';
+      onChange(0);
+    });
+
+    wrapper.append(labelEl, slider);
+    return wrapper;
+  }
+
   /**
    * Create dropdown panel for oscillator
    */
