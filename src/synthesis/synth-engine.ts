@@ -7,7 +7,7 @@
 
 import * as Tone from 'tone';
 import type { ADSREnvelope, FilterSettings, OscillatorTuning } from '../types';
-import { DEFAULT_BODY, DEFAULT_ENVELOPE, DEFAULT_FILTER, DEFAULT_TUNING } from '../types';
+import { DEFAULT_BODY, DEFAULT_ENVELOPE, DEFAULT_FILTER, DEFAULT_TUNING, MAX_UNISON } from '../types';
 import { applyFundamentalBody, computeHarmonicsFromWavetable, type WavetableHarmonics } from './wavetable';
 import { EffectsChain, getEffectsChain } from './effects-chain';
 import { WavetableVoice } from './wavetable-voice';
@@ -210,7 +210,7 @@ export class GlucoseSynth {
   }
 
   /**
-   * Set octave / semitone / fine detune and pan for an oscillator
+   * Set octave / semitone / fine detune, pan and unison for an oscillator
    */
   setOscillatorTuning(oscillatorIndex: number, tuning: Partial<OscillatorTuning>): void {
     if (oscillatorIndex < 0 || oscillatorIndex >= NUM_OSCILLATORS) return;
@@ -222,11 +222,14 @@ export class GlucoseSynth {
       semitone: Math.round(Math.max(-12, Math.min(12, next.semitone))),
       fine: Math.max(-50, Math.min(50, next.fine)),
       pan: Math.max(-1, Math.min(1, next.pan)),
+      unison: Math.round(Math.max(1, Math.min(MAX_UNISON, next.unison))),
+      unisonDetune: Math.max(0, Math.min(50, next.unisonDetune)),
     };
 
     const cents = osc.tuning.octave * 1200 + osc.tuning.semitone * 100 + osc.tuning.fine;
     for (const voice of osc.voices) {
       voice.setDetune(cents);
+      voice.setUnison(osc.tuning.unison, osc.tuning.unisonDetune);
     }
     osc.panner.pan.value = osc.tuning.pan;
   }

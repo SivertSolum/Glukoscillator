@@ -6,14 +6,26 @@ This document explains how Glukoscillator transforms your glucose data into uniq
 
 ## How It Works
 
-When you click **Randomize**, the app:
+Three buttons in the oscillator header apply glucose-driven sound:
 
-1. **Analyzes** your current glucose data
-2. **Calculates** several metrics about the day's patterns
+| Button | Days | Sound |
+|--------|------|-------|
+| **Randomize** | Picks 3 random days | Applies those days' **signature** |
+| **Signature** | Keeps current days | Applies their signature — use after picking days by hand, or to return from a mutation |
+| **Mutate** | Keeps current days | Applies a new **variation**: same glucose tendencies, different random spread and choices |
+
+Each time, the app:
+
+1. **Analyzes** the glucose data of the days assigned to the oscillators
+2. **Calculates** several metrics about the days' patterns
 3. **Selects** appropriate effects based on those patterns
-4. **Tunes** effect parameters and envelope to match
+4. **Tunes** effect parameters, envelope, filter, Body, and per-oscillator tuning/pan/unison to match
 
-The result is a direct sonic representation of your glucose patterns.
+### Signature sounds (seeded randomness)
+
+The random spread in all mappings comes from a seeded generator (`src/synthesis/random.ts`), seeded from the oscillators' dates **in slot order** plus a variation number. Variation `0` is the signature, so **the same days in the same slots always produce the same sound**. Mutate uses a random non-zero variation. Moving a day to a different slot gives a different signature, because per-oscillator tuning depends on the slot.
+
+The result is a direct, repeatable sonic representation of your glucose patterns.
 
 ---
 
@@ -26,7 +38,7 @@ Each day's readings become one cycle of a waveform (normalized, resampled to 204
 - **The cycle wraps from 24:00 back to 00:00.** If the day ends at a different level than it started, the jump at the seam adds bright, sawtooth-like buzz — part of that day's character.
 - **Body (TONE section, default 50%)** lifts the fundamental when a day's curve concentrates energy in a higher harmonic (e.g. two big meal spikes ≈ 2nd harmonic). Without it such days can sound an octave or fifth off the key played; turn Body to 0 to hear the raw spectrum.
 
-Oscillator tuning, pan and the filter are manual controls; Randomize does not change them yet.
+Randomize, Signature and Mutate also set the filter, Body and per-oscillator tuning — see [Voice Mapping](#voice-mapping).
 
 ---
 
@@ -100,7 +112,7 @@ Different glucose patterns trigger different effect combinations:
 | Poor TIR (<50%) | Auto-Wah | Vowel-like sweeps |
 | Poor TIR | AutoFilter | Rhythmic filtering |
 | Good TIR (>70%) | Delay | Echo, depth |
-| Good TIR | Stereo Widener | Panoramic spread |
+| Good TIR | Stereo Widener | Panoramic spread (width kept at 0.5–0.8; full width would cancel centered sound to silence) |
 | Good TIR | Pitch Shift | Harmonic layers |
 
 **Result:** Poor control days get filtered, restless sounds; good control days get wide, pleasant textures.
@@ -127,6 +139,33 @@ chaos = (volatility × 0.4) + (CV × 0.3) + (rateOfChange × 0.3)
 ```
 
 This combines multiple instability indicators into a single measure used for envelope shaping.
+
+---
+
+## Voice Mapping
+
+Implemented in `src/synthesis/voice-mapping.ts` (`computeVoiceFromGlucose()`). Shared settings use the stats combined over all assigned days; per-oscillator tuning uses **that oscillator's own day**. All values get a small seeded random spread.
+
+### Shared (all oscillators)
+
+| Parameter | Controlled by | Mapping logic |
+|-----------|---------------|---------------|
+| **Cutoff** | Chaos (70%) + average (30%) | Volatile / high days = brighter (up to 18 kHz); calm days = warmer (down to ≈ 850 Hz) |
+| **Resonance** | Rate of change | Sharp rises and crashes = resonant peak (Q 0.7 → 6) |
+| **Filter env amount** | Range | Wide max−min spread = bigger sweep (0 → 4 octaves) |
+| **Filter env decay** | Rate of change | Rapid changes = short pluck (80 ms); slow drifts = long sweep (1.2 s) |
+| **Body** | Quality (TIR + low volatility) | Good control = grounded, clearly pitched (90%); poor control = rawer spectrum (25%) |
+| **Pan width** | Quality | Good control = wide stereo: OSC 1 center, OSC 2 left, OSC 3 right (±0.1 → ±0.7) |
+| **Unison voices** | Chaos (inverse) | Calm days = lush 4-voice stack; chaotic days = a single, exposed oscillator |
+
+### Per oscillator (its own day)
+
+| Parameter | Controlled by | Mapping logic |
+|-----------|---------------|---------------|
+| **Octave** | Day's average | OSC 1 is the root (always 0). OSC 2/3: high-average days +1 octave, low-average days −1 |
+| **Semitone** | Day's TIR + chance | OSC 2/3 may sit on a consonant interval (+7, +5, −5, −7). Chance = 25% + 50% × (1 − TIR) |
+| **Fine** | Day's CV | Unstable days detune further (2 → 20 cents), OSC 2 sharp and OSC 3 flat, so they beat against the root |
+| **Unison spread** | Day's range | Wide-range days spread their unison stack wider (6 → 35 cents) |
 
 ---
 
@@ -182,14 +221,15 @@ Sound: Smooth, ambient, spacious
 
 ## Manual Override
 
-While the Randomize feature provides data-driven presets, you can always:
+While Randomize / Signature / Mutate provide data-driven presets, you can always:
 
 1. Manually enable/disable any effect
 2. Adjust effect parameters with the knobs
-3. Change ADSR envelope values
-4. Reorder effects by dragging
+3. Change ADSR envelope, filter and Body values
+4. Change each oscillator's octave, semitone, fine, pan and unison
+5. Reorder effects by dragging
 
-Your manual adjustments override the randomized settings.
+Your manual adjustments override the generated settings until the next Randomize / Signature / Mutate. Picking a day by hand does not change the sound settings — press **Signature** to apply that combination's sound.
 
 ---
 
@@ -198,6 +238,9 @@ Your manual adjustments override the randomized settings.
 The glucose-to-sound mapping is implemented in:
 
 - `src/synthesis/effects-config.ts` — Metric calculations and normalization
+- `src/synthesis/voice-mapping.ts` — Filter, Body, tuning, pan and unison mapping
+- `src/synthesis/random.ts` — Seeded randomness for signature sounds
+- `src/ui/oscillator-mixer.ts` — Randomize / Signature / Mutate and envelope mapping
 - `src/synthesis/effects-chain.ts` — Effect selection and parameter mapping
 - `src/synthesis/wavetable.ts` — Glucose curve → wavetable → harmonics (magnitude + phase), Body
 - `src/synthesis/synth-engine.ts` — Envelope, filter and tuning application

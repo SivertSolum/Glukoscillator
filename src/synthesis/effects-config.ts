@@ -3,6 +3,7 @@
 
 import type { EffectId } from './effects-types';
 import type { GlucoseReading } from '../types';
+import type { RandomSource } from './random';
 
 // Glucose stats interface for data-driven randomization
 export interface GlucoseStats {
@@ -112,7 +113,8 @@ export const RANDOM_RANGES = {
     wet: { min: 0.1, max: 0.5 },
   },
   stereowidener: {
-    width: { min: 0, max: 1 },
+    // 0.5 = unchanged image; 1 = side only, which silences centered (mono) sound
+    width: { min: 0.5, max: 0.8 },
     wet: { min: 0, max: 1 },
   },
 };
@@ -343,9 +345,10 @@ export function amplifyValue(value: number, exponent: number = 2): number {
 /**
  * Add controlled randomness to a value while keeping it in 0-1 range
  * spread controls how much random variation (0.1 = ±10%)
+ * rng defaults to Math.random; pass a seeded source for reproducible results
  */
-export function addRandomSpread(value: number, spread: number = 0.2): number {
-  const randomOffset = (Math.random() - 0.5) * 2 * spread;
+export function addRandomSpread(value: number, spread: number = 0.2, rng: RandomSource = Math.random): number {
+  const randomOffset = (rng() - 0.5) * 2 * spread;
   return Math.min(1, Math.max(0, value + randomOffset));
 }
 

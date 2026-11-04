@@ -62,19 +62,46 @@ export const DEFAULT_FILTER: FilterSettings = {
   envDecay: 0.4,
 };
 
-// Per-oscillator pitch offset and stereo position
+// Control ranges for the filter (UI knobs and glucose mapping)
+export const FILTER_RANGES = {
+  cutoff: { min: 20, max: 18000 },   // Hz, log scale
+  resonance: { min: 0.5, max: 10 },  // Q
+  envAmount: { min: 0, max: 6 },     // octaves
+  envDecay: { min: 0.01, max: 2 },   // seconds
+};
+
+/** 0-1 → cutoff Hz on a log scale (so the low end is usable) */
+export function normalizedToCutoff(v: number): number {
+  const { min, max } = FILTER_RANGES.cutoff;
+  return min * Math.pow(max / min, Math.max(0, Math.min(1, v)));
+}
+
+/** Cutoff Hz → 0-1 on the same log scale */
+export function cutoffToNormalized(hz: number): number {
+  const { min, max } = FILTER_RANGES.cutoff;
+  const clamped = Math.max(min, Math.min(max, hz));
+  return Math.log(clamped / min) / Math.log(max / min);
+}
+
+// Per-oscillator pitch offset, stereo position and unison
 export interface OscillatorTuning {
   octave: number;    // -2..+2
   semitone: number;  // -12..+12
   fine: number;      // cents, -50..+50
   pan: number;       // -1 (left)..+1 (right)
+  unison: number;    // 1..MAX_UNISON stacked oscillators per voice
+  unisonDetune: number; // cents between the outermost unison oscillators, 0..50
 }
+
+export const MAX_UNISON = 4;
 
 export const DEFAULT_TUNING: OscillatorTuning = {
   octave: 0,
   semitone: 0,
   fine: 0,
   pan: 0,
+  unison: 1,
+  unisonDetune: 15,
 };
 
 // Default fundamental reinforcement (see applyFundamentalBody in wavetable.ts)

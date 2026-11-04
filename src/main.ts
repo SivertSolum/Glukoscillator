@@ -61,9 +61,10 @@ async function init(): Promise<void> {
   });
 
   oscillatorMixer.onRandomize(() => {
-    // Sync envelope knobs after randomization
+    // Sync knobs and tuning controls after randomize/mutate
     synthControls?.syncFromSynth();
     mobileSynthControls?.syncFromSynth();
+    mobileOscillatorMixer?.syncTuningFromSynth();
   });
 
   // Initialize mobile UI components
@@ -132,6 +133,7 @@ function setupMobileUI(): void {
   mobileOscillatorMixer.onRandomize(() => {
     synthControls?.syncFromSynth();
     mobileSynthControls?.syncFromSynth();
+    oscillatorMixer?.syncTuningFromSynth();
   });
 
   // Set up mobile tab navigation

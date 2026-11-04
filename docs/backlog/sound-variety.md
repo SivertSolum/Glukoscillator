@@ -1,7 +1,13 @@
 # Sound variety — remaining ideas
 
 **Status:** Draft — discovery notes, not an implementation spec.
-**Context:** From an analysis of the audio engine (Nov 2026). Already shipped from that analysis: phase-preserving wavetables + Body (fundamental reinforcement), per-oscillator octave/semitone/fine/pan, per-voice lowpass filter with envelope. See [components.md](../components.md#synth-engine).
+**Context:** From an analysis of the audio engine (Nov 2026). Already shipped from that analysis:
+- Phase-preserving wavetables + Body (fundamental reinforcement)
+- Per-oscillator octave/semitone/fine/pan, per-voice lowpass filter with envelope
+- **B: Unison** per oscillator (1–4 voices, detune spread)
+- **D: Seeded signature sounds** (Randomize / Signature / Mutate) and glucose mapping of filter, Body, tuning, pan and unison
+
+See [components.md](../components.md#synth-engine) and [glucose-sound-design.md](../glucose-sound-design.md#voice-mapping).
 
 The ideas below are pinned for later. Rough payoff/effort order within each section.
 
@@ -9,17 +15,8 @@ The ideas below are pinned for later. Rough payoff/effort order within each sect
 
 ## A. Waveform generation
 
-### A3. Multi-frame wavetables + Position control (biggest remaining win)
-Slice each day into N frames (e.g. 24 hourly windows, or a sliding window) instead of one cycle per day. A **Position** knob scans morning → night; modulate it from an envelope or LFO so notes evolve while held.
-- Cheap version: precompute a `PeriodicWave` per frame, crossfade two voices' oscillators.
-- Full version: AudioWorklet with band-limited (mip-mapped) table lookup and smooth interpolation.
-- Open questions: frame count vs. CGM sample rate (5–15 min readings → 12–288 points/day); how the waveform display should show the current frame.
-
-### A4. Alternative waveform derivations
-Selectable per oscillator:
-- **Derivative** (rate of change) — brighter, spikier, emphasizes meals/corrections.
-- **Physiological normalization** — `normalizeToPhysiologicalRange()` already exists in `wavetable.ts` but is unused; keeps day-to-day amplitude/brightness differences instead of stretching every day to full scale.
-- **Mirrored day** (day + reversed day) — symmetric cycle, odd-harmonic, hollow/square-ish tone.
+### A3 + A4. Multi-frame wavetables / alternative waveform modes
+**Planned** — moved to [wavetable-frames-and-modes.md](./wavetable-frames-and-modes.md) with an implementation sketch.
 
 ### A5. Per-oscillator shape controls
 - Smoothing passes (currently fixed at 2).
@@ -32,7 +29,6 @@ Use the day's sorted values (its value distribution) as a `Tone.WaveShaper` tran
 
 ## B. Voice architecture
 
-- **Unison** per oscillator with detune spread (builds on the existing tuning).
 - **FM / ring modulation** between layers — one day modulating another; metallic/bell timbres.
 - **Noise layer** with level driven by volatility.
 - **Glide / portamento** (mono/legato mode).
@@ -46,7 +42,6 @@ Use the day's sorted values (its value distribution) as a `Tone.WaveShaper` tran
 ## D. Smarter Randomize mapping
 
 - Blend effect amounts continuously with metrics instead of hard on/off thresholds.
-- Seed randomness from the date hash → each day has a stable signature sound; add a separate "Mutate" button.
 - More metrics: spike count (≈ meals), overnight stability, skewness, time-above vs. time-below kept separate (lows → brittle/thin, highs → thick/saturated).
-- Map metrics onto synth parameters too (filter, detune, Body, wavetable position), not only FX + ADSR.
+- Map wavetable position / waveform mode once those exist (see [wavetable-frames-and-modes.md](./wavetable-frames-and-modes.md)).
 - Update [glucose-sound-design.md](../glucose-sound-design.md) alongside any mapping change.
