@@ -54,14 +54,17 @@ Converts daily glucose data into playable wavetables for synthesis.
 2. **Normalize** — Scale values to [-1, 1] range using day's min/max
 3. **Resample** — Interpolate to 2048 samples (standard wavetable size)
 4. **Smooth** — Apply windowing to reduce aliasing artifacts
-5. **FFT** — Compute 64 harmonic partials for Tone.js oscillators
+5. **FFT** — `computeHarmonicsFromWavetable()` returns 64 harmonics as Fourier coefficients (`real` = cosine, `imag` = sine), keeping both magnitude **and phase**
+6. **Body** — `applyFundamentalBody()` optionally lifts a weak fundamental (see [Synth Engine](#synth-engine))
+7. **PeriodicWave** — The synth builds a Web Audio `PeriodicWave` from those coefficients, so the oscillator plays the actual glucose-curve shape
 
 ### Technical Details
 
 | Parameter | Value | Purpose |
 |-----------|-------|---------|
 | Sample count | 2048 | Standard wavetable size for synthesis |
-| Harmonic count | 64 | Number of partials from FFT analysis |
+| Harmonic count | 64 | Band limit: harmonics kept from the FFT (magnitude + phase) |
+| Loudness | Peak-normalized | Web Audio normalizes each `PeriodicWave`; no per-day scaling in code |
 | Normalization | -1 to 1 | Audio signal range |
 
 ### Result
@@ -81,10 +84,16 @@ A polyphonic wavetable synthesizer built on [Tone.js](https://tonejs.github.io/)
 | Feature | Details |
 |---------|---------|
 | **Oscillators** | 3 independent layers, each with its own wavetable |
+| **Voice** | `WavetableVoice` (`wavetable-voice.ts`): PeriodicWave oscillator → 12 dB lowpass → amp envelope |
 | **Polyphony** | 6 voices per oscillator (18 total) |
 | **Voice Allocation** | O(1) lookup using Set for available voices |
 | **Envelope** | Configurable ADSR (Attack, Decay, Sustain, Release) |
+| **Filter** | Per-voice lowpass + filter envelope (shared settings) |
+| **Tuning** | Per-oscillator octave (±2), semitone (±12), fine (±50 ct) and pan |
+| **Body** | Fundamental reinforcement so weak-fundamental days stay in tune |
 | **Mixing** | Per-oscillator level control + automatic gain compensation |
+
+> Why a custom voice instead of `Tone.Synth`? Tone's `Oscillator` only accepts sine-partial amplitudes, which discards harmonic phase. `WavetableVoice` drives Tone's `ToneOscillatorNode` with a full `PeriodicWave` built from `real` + `imag` coefficients.
 
 ### Voice Management
 
@@ -103,7 +112,7 @@ The synth uses a pool of pre-allocated voices for each oscillator layer:
 │  │ V5  │     │ V5  │     │ V5  │           │
 │  │ V6  │     │ V6  │     │ V6  │           │
 │  └──┬──┘     └──┬──┘     └──┬──┘           │
-│     │ Level     │ Level     │ Level        │
+│     │ Level→Pan │ Level→Pan │ Level→Pan    │
 │     └───────────┼───────────┘              │
 │                 ▼                           │
 │         Master Gain → Effects → Output      │
@@ -115,9 +124,30 @@ The synth uses a pool of pre-allocated voices for each oscillator layer:
 Each note passes through an envelope shaper:
 
 - **Attack** — Time to reach peak volume (0.001s - 2s)
-- **Decay** — Time to fall to sustain level (0.01s - 2s)
+- **Decay** — Time to fall to sustain level (0.001s - 2s)
 - **Sustain** — Volume held while key is pressed (0 - 1)
-- **Release** — Time to fade after key release (0.01s - 5s)
+- **Release** — Time to fade after key release (0.001s - 4s)
+
+Each voice is `oscillator → lowpass filter → amp envelope`.
+
+### Tone: Filter & Body
+
+`setFilter()` / `getFilter()` (`FilterSettings` in `types.ts`), shared by all 18 voices:
+
+| Control | Range | Behavior |
+|---------|-------|----------|
+| **Cutoff** | 20 Hz – 18 kHz (log knob) | Resting cutoff of the 12 dB/oct lowpass |
+| **Resonance** | Q 0.5 – 10 | Peak at the cutoff |
+| **Env amount** | 0 – 6 octaves | How far the filter envelope opens above cutoff; scaled by note velocity |
+| **Env decay** | 0.01 – 2 s | Time for the sweep to fall back to cutoff (filter env uses the amp attack/release, sustain 0) |
+
+Defaults (open filter, no envelope) leave the raw wavetable unfiltered.
+
+`setBody(0–1)` (default 0.5): ensures the fundamental is at least `body ×` the strongest harmonic, keeping its phase. Many days have a weak fundamental with a dominant upper harmonic, which otherwise makes notes sound an octave or fifth away from the key played. `0` = untouched spectrum.
+
+### Oscillator Tuning
+
+`setOscillatorTuning(index, { octave, semitone, fine, pan })` / `getOscillatorTuning(index)` (`OscillatorTuning` in `types.ts`). Pitch offsets are applied as oscillator detune in cents (also to sounding notes); pan uses a per-layer `Tone.Panner`.
 
 ---
 
@@ -171,7 +201,7 @@ Effects can be reordered by dragging them in the UI. The chain automatically rec
 | **Oscillator Mixer** | `oscillator-mixer.ts` | 3-slot interface for layer assignment |
 | **Waveform Display** | `waveform-display.ts` | Triple-layer canvas oscilloscope |
 | **Piano Keyboard** | `piano-keyboard.ts` | Dynamic 3-6 octave virtual keyboard |
-| **Synth Controls** | `controls.ts` | ADSR knobs with vintage styling |
+| **Synth Controls** | `controls.ts` | ADSR, tone/filter and master knobs with vintage styling |
 | **Effects Panel** | `effects-panel.ts` | Stomp-box style effect modules |
 
 ---
@@ -198,6 +228,8 @@ Three-channel mixer for layering different days' waveforms.
 **Features:**
 - Assign different days to each of 3 oscillator slots
 - Individual level control per oscillator
+- Octave and semitone steppers (double-click the value to reset)
+- Fine-tune and pan sliders (double-click to center)
 - Visual feedback showing assigned waveform
 
 ---
@@ -238,10 +270,12 @@ Virtual piano keyboard with responsive sizing.
 
 **File:** `src/ui/controls.ts`
 
-ADSR envelope knobs and master volume.
+ADSR envelope knobs, master volume, and the TONE section (Body, Cutoff, Resonance, filter Env amount, filter Decay).
 
 **Features:**
 - Rotary knob interface with drag interaction
+- Cutoff knob is logarithmic (20 Hz – 18 kHz)
+- Desktop and mobile instances each look up their own knobs (scoped to their container)
 - Value display beneath each knob
 - Vintage synthesizer styling
 

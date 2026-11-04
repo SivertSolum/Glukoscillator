@@ -51,10 +51,21 @@ function bitReverse(arr: Float32Array, n: number): void {
 }
 
 /**
- * Cooley-Tukey FFT algorithm - O(n log n) complexity
- * Returns magnitude spectrum for the first numPartials harmonics
+ * Fourier series of a single-cycle waveform, in the layout Web Audio's
+ * `createPeriodicWave(real, imag)` expects: index 0 is DC (always 0 here),
+ * index k is harmonic k. `real` holds cosine terms, `imag` sine terms, so
+ * both magnitude and phase of each harmonic are preserved.
  */
-function fft(input: Float32Array, numPartials: number): number[] {
+export interface WavetableHarmonics {
+  real: Float32Array;
+  imag: Float32Array;
+}
+
+/**
+ * Cooley-Tukey FFT algorithm - O(n log n) complexity
+ * Returns the Fourier series coefficients for harmonics 1..numPartials
+ */
+function fft(input: Float32Array, numPartials: number): WavetableHarmonics {
   const N = input.length;
   
   // Ensure N is a power of 2
@@ -99,18 +110,57 @@ function fft(input: Float32Array, numPartials: number): number[] {
     }
   }
   
-  // Extract magnitudes for the requested number of partials
-  const partials: number[] = [];
+  // Convert DFT bins to Fourier series coefficients:
+  //   x(t) ≈ Σ a_k·cos(2πkt) + b_k·sin(2πkt)
+  //   a_k = 2·Re(X_k)/N,  b_k = −2·Im(X_k)/N
+  // DC (index 0) is left at 0 — the oscillator should be centered.
+  // No per-wave normalization here: Web Audio normalizes PeriodicWave peaks,
+  // so loudness stays consistent across days without distorting the spectrum.
+  const count = Math.min(numPartials, N / 2 - 1);
+  const outReal = new Float32Array(count + 1);
+  const outImag = new Float32Array(count + 1);
   const normFactor = 2 / N;
-  
-  for (let k = 1; k <= numPartials; k++) {
-    const magnitude = Math.sqrt(real[k] * real[k] + imag[k] * imag[k]) * normFactor;
-    partials.push(magnitude);
+
+  for (let k = 1; k <= count; k++) {
+    outReal[k] = real[k] * normFactor;
+    outImag[k] = -imag[k] * normFactor;
   }
-  
-  // Normalize so fundamental is 1
-  const fundamental = partials[0] || 1;
-  return partials.map(p => p / fundamental);
+
+  return { real: outReal, imag: outImag };
+}
+
+/**
+ * Ensure the fundamental is at least `body` × the strongest harmonic,
+ * keeping its phase. Many glucose days have a weak fundamental and a dominant
+ * upper harmonic, which makes notes sound an octave or fifth off the key played.
+ * body = 0 leaves the spectrum untouched; body = 1 makes the fundamental the
+ * loudest harmonic. Returns a new object; the input is not modified.
+ */
+export function applyFundamentalBody(harmonics: WavetableHarmonics, body: number): WavetableHarmonics {
+  const real = new Float32Array(harmonics.real);
+  const imag = new Float32Array(harmonics.imag);
+  if (real.length < 2 || body <= 0) return { real, imag };
+
+  let maxMag = 0;
+  for (let k = 1; k < real.length; k++) {
+    maxMag = Math.max(maxMag, Math.hypot(real[k], imag[k]));
+  }
+
+  const target = Math.min(1, body) * maxMag;
+  const fundMag = Math.hypot(real[1], imag[1]);
+  if (target > fundMag) {
+    if (fundMag > 1e-9) {
+      const scale = target / fundMag;
+      real[1] *= scale;
+      imag[1] *= scale;
+    } else {
+      // No fundamental at all: add a plain sine at the target level
+      real[1] = 0;
+      imag[1] = target;
+    }
+  }
+
+  return { real, imag };
 }
 
 /**
@@ -250,11 +300,12 @@ function smoothWavetable(wavetable: Float32Array, passes: number = 2): void {
 }
 
 /**
- * Compute FFT partials from wavetable for Tone.js
- * Uses optimized Cooley-Tukey FFT algorithm - O(n log n) instead of O(n²)
- * Tone.js uses Fourier coefficients for custom oscillators
+ * Compute band-limited harmonics (magnitude + phase) from a wavetable.
+ * Uses optimized Cooley-Tukey FFT algorithm - O(n log n) instead of O(n²).
+ * Feed the result to `createPeriodicWave(real, imag)` so the oscillator plays
+ * the actual glucose-curve shape, not just its magnitude spectrum.
  */
-export function computePartialsFromWavetable(wavetable: Float32Array, numPartials: number = 64): number[] {
+export function computeHarmonicsFromWavetable(wavetable: Float32Array, numPartials: number = 64): WavetableHarmonics {
   return fft(wavetable, numPartials);
 }
 

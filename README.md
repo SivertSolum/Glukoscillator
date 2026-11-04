@@ -13,7 +13,7 @@ Glukoscillator is a browser-based synthesizer that converts continuous glucose m
 ## ✨ Features
 
 - **Wavetable Synthesis** — Each day's glucose data becomes a single-cycle waveform
-- **3 Oscillator Layers** — Mix up to 3 different days simultaneously
+- **3 Oscillator Layers** — Mix up to 3 different days simultaneously, each with its own octave, semitone, fine-tune and pan
 - **15 Audio Effects** — Professional-quality effects chain (reverb, delay, chorus, distortion, etc.)
 - **Data-Driven Sound Design** — Effects and envelope automatically shaped by your glucose patterns
 - **MIDI Support** — Connect your MIDI keyboard for expressive control
@@ -22,6 +22,7 @@ Glukoscillator is a browser-based synthesizer that converts continuous glucose m
 - **Drag-and-Drop** — Simple CSV file loading
 - **Smart Randomize** — Generate sound combinations based on your glucose characteristics
 - **ADSR Envelope** — Full attack, decay, sustain, release control (auto-adjusts to glucose data)
+- **Tone Section** — Per-voice lowpass filter with velocity-sensitive envelope, plus a Body control that keeps each day's pitch anchored
 - **Responsive Design** — Works on desktop and tablets
 
 ---
@@ -59,7 +60,7 @@ Open http://localhost:5173 in your browser.
    - **Mouse/Touch** — Click the piano keyboard
    - **Computer Keyboard** — Use the QWERTY layout (see [Keyboard Mapping](docs/input-controls.md#computer-keyboard))
    - **MIDI Controller** — Connect any class-compliant MIDI device
-6. Adjust the **ADSR envelope** and **master volume** with the rotary knobs
+6. Adjust the **ADSR envelope**, **tone/filter** and **master volume** with the rotary knobs; detune and pan each oscillator under its level slider
 7. Add and configure **effects** from the modular pedalboard
 
 ---

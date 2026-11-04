@@ -45,8 +45,9 @@ Glukoscillator/
     ├── style.css              # Imports all styles/*.css
     ├── parser/libreview.ts    # parseLibreViewCSV()
     ├── synthesis/
-    │   ├── wavetable.ts       # generateAllWavetables(), FFT partials
-    │   ├── synth-engine.ts    # GlucoseSynth, getSynth()
+    │   ├── wavetable.ts       # generateAllWavetables(), FFT harmonics (magnitude + phase), Body
+    │   ├── wavetable-voice.ts # WavetableVoice: PeriodicWave osc → lowpass → amp env
+    │   ├── synth-engine.ts    # GlucoseSynth, getSynth(); tuning, filter, body
     │   ├── effects-chain.ts   # 15 reorderable FX, getEffectsChain()
     │   ├── effects-config.ts  # Glucose-driven effect ranges
     │   └── effects-types.ts
@@ -63,7 +64,7 @@ Glukoscillator/
 |--------|------|
 | `parseLibreViewCSV()` | LibreView CSV → `ParsedLibreViewData` (`Map` of days) |
 | `generateAllWavetables()` | Fills each day's `wavetable` (`Float32Array`, 2048 samples) |
-| `GlucoseSynth` / `getSynth()` | 3×6-voice polyphonic Tone.js synth; routes through effects chain |
+| `GlucoseSynth` / `getSynth()` | 3×6-voice polyphonic synth (custom `WavetableVoice`, not `Tone.Synth`); per-osc tuning/pan, shared filter + Body; routes through effects chain |
 | `EffectsChain` / `getEffectsChain()` | Modular pedalboard; `randomizeFromGlucose()` for smart randomize |
 | `createOscillatorMixer()` etc. | UI bound to container IDs in `index.html` |
 
@@ -71,7 +72,7 @@ Glukoscillator/
 
 - **Input:** LibreView CSV (`.csv`); see `docs/libreview-format.md`
 - **Internal unit:** mg/dL after parser normalization; time-in-range uses 70–180 mg/dL (`GLUCOSE_RANGE` in `types.ts`)
-- **Wavetable:** 2048 samples → 64 FFT partials for Tone.js oscillators
+- **Wavetable:** 2048 samples → 64 FFT harmonics (`real`/`imag`, phase preserved) → Web Audio `PeriodicWave`
 - **Audio start:** requires user gesture — `GlucoseSynth.start()` / `Tone.start()` via "Start Audio" overlay
 
 ## Development commands
@@ -99,6 +100,7 @@ No automated tests. Manual smoke test:
 2. Drag a LibreView CSV; verify day count and oscillator assignment.
 3. Play notes via piano, QWERTY keys, and MIDI (if available).
 4. Toggle effects and randomize; confirm envelope knobs sync.
+5. Change oscillator Oct/Semi/Fine/Pan and the TONE knobs (Body, Cut, Res, Env, F.Dcy); confirm pitch/timbre respond.
 
 **Build / preview:**
 
@@ -122,11 +124,12 @@ npm run preview    # optional — smoke-test the production bundle
 - Run `npm run dev` and manually verify audio/UI for synthesis, parser, or DOM changes.
 - Touching static assets under `public/` — confirm paths use `import.meta.env.BASE_URL` (see `loadSampleData()` in `main.ts`).
 - No lint or format scripts configured; match existing file style.
+- Update documentation in the same change (see **Documentation** below).
 
 **Key utilities:**
 
 - `parseLibreViewCSV(text)` → then `generateAllWavetables(data.days)` before updating UI
-- `getSynth()` — note on/off, envelope, oscillator levels and wavetables
+- `getSynth()` — note on/off, envelope, oscillator levels/tuning and wavetables, `setFilter()`, `setBody()`
 - `getEffectsChain().randomizeFromGlucose(stats)` — glucose-driven FX + envelope (used by oscillator mixer randomize)
 - `createPianoKeyboard('piano-keyboard')` / `'mobile-piano-keyboard'` — parallel desktop/mobile instances
 
@@ -159,9 +162,23 @@ mobileOscillatorMixer?.setData(glucoseData);
 
 - UI modules own DOM construction inside a container ID; `main.ts` wires callbacks and shared state.
 - Glucose metrics drive sound via `effects-config.ts` and `randomizeFromGlucose()` — read `docs/glucose-sound-design.md` before changing mapping logic.
-- Wavetable synthesis uses `computePartialsFromWavetable()` — do not reimplement FFT elsewhere.
+- Wavetable synthesis uses `computeHarmonicsFromWavetable()` — do not reimplement FFT elsewhere. Keep phase: build waves with `createPeriodicWave(real, imag)`, not Tone's sine-only `partials`.
 - Styles are split per component under `src/styles/`; import new sheets from `style.css`.
 - `verbatimModuleSyntax` is on — use `import type` for type-only imports.
+
+**Documentation:**
+
+Docs must always describe the project as it currently is. Any change to behavior, controls, APIs, file layout or commands is not done until the matching docs are updated in the same change:
+
+- `README.md` — features and quick start
+- `docs/architecture.md` — file tree and data/signal flow
+- `docs/components.md` — module APIs, ranges and defaults
+- `docs/glucose-sound-design.md` — anything that changes how glucose data maps to sound
+- `docs/input-controls.md`, `docs/libreview-format.md`, `BUILD_AND_TEST.md` — when input, parsing or build/test steps change
+- `docs/backlog/` — when an idea ships, mark it done or remove it from the note, and note what shipped
+- This file (`AGENTS.md`) — file structure, key modules, conventions and boundaries
+
+If you find docs that are already out of date, fix them or flag them.
 
 **Design constraints:**
 

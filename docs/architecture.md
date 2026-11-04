@@ -21,8 +21,9 @@ glukoscillator/
     │   └── libreview.ts    # CSV parser for LibreView exports
     │
     ├── synthesis/
-    │   ├── synth-engine.ts # Main Tone.js synth (3-osc polyphonic)
-    │   ├── wavetable.ts    # Glucose → waveform conversion + FFT
+    │   ├── synth-engine.ts # Main Tone.js synth (3-osc polyphonic, tuning, filter, body)
+    │   ├── wavetable-voice.ts # One voice: PeriodicWave osc → lowpass → amp env
+    │   ├── wavetable.ts    # Glucose → waveform conversion + FFT harmonics
     │   ├── effects-chain.ts    # Modular effects routing + glucose-driven randomization
     │   ├── effects-config.ts   # Effect ranges, glucose metrics & normalization
     │   └── effects-types.ts    # Effect parameter type definitions
@@ -32,11 +33,11 @@ glukoscillator/
     │   └── midi-handler.ts     # Web MIDI API integration
     │
     ├── ui/
-    │   ├── controls.ts         # ADSR knobs & master volume
+    │   ├── controls.ts         # ADSR, tone/filter & master knobs
     │   ├── day-selector.ts     # Dropdown for choosing days
     │   ├── effects-panel.ts    # Drag-and-drop effects rack
     │   ├── effects-icons.ts    # SVG icons for effects
-    │   ├── oscillator-mixer.ts # 3-channel oscillator UI
+    │   ├── oscillator-mixer.ts # 3-channel oscillator UI (level, tuning, pan)
     │   ├── piano-keyboard.ts   # Virtual piano with dynamic sizing
     │   └── waveform-display.ts # Canvas oscilloscope visualization
     │
@@ -83,7 +84,7 @@ The following diagram shows how glucose data flows through the application:
   │  • Timestamps│      │  • Parse rows   │      │  • Normalize       │
   │  • Glucose   │      │  • Group by day │      │  • Resample to     │
   │    readings  │      │  • Calc stats   │      │    2048 samples    │
-  │              │      │                 │      │  • FFT → partials  │
+  │              │      │                 │      │  • FFT → harmonics │
   └──────────────┘      └─────────────────┘      └────────────────────┘
                                                           │
                                                           ▼
@@ -145,12 +146,14 @@ The following diagram shows how glucose data flows through the application:
 │  │  GlucoseSynth (synth-engine.ts)                                      │   │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐               │   │
 │  │  │ Oscillator 1 │  │ Oscillator 2 │  │ Oscillator 3 │               │   │
-│  │  │ • 6 voices   │  │ • 6 voices   │  │ • 6 voices   │               │   │
+│  │  │ • 6 voices*  │  │ • 6 voices*  │  │ • 6 voices*  │               │   │
 │  │  │ • Wavetable  │  │ • Wavetable  │  │ • Wavetable  │               │   │
-│  │  │ • Level      │  │ • Level      │  │ • Level      │               │   │
+│  │  │ • Tuning     │  │ • Tuning     │  │ • Tuning     │               │   │
+│  │  │ • Level, Pan │  │ • Level, Pan │  │ • Level, Pan │               │   │
 │  │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘               │   │
 │  │         └─────────────────┼─────────────────┘                        │   │
 │  │                           ▼                                          │   │
+│  │  * voice = PeriodicWave osc → lowpass (+ filter env) → amp env      │   │
 │  │              ┌────────────────────────┐                              │   │
 │  │              │     Master Volume      │                              │   │
 │  │              │  (gain compensation)   │                              │   │

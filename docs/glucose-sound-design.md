@@ -17,6 +17,19 @@ The result is a direct sonic representation of your glucose patterns.
 
 ---
 
+## From Glucose Curve to Oscillator
+
+Each day's readings become one cycle of a waveform (normalized, resampled to 2048 samples, lightly smoothed). The oscillator then plays that exact shape:
+
+- **Harmonics keep their phase.** The FFT result is passed to Web Audio as a `PeriodicWave` with both cosine and sine terms, so asymmetric spikes, slow rises and sharp crashes all shape the timbre — not just how much energy sits in each harmonic.
+- **Band-limited to 64 harmonics** to avoid aliasing.
+- **The cycle wraps from 24:00 back to 00:00.** If the day ends at a different level than it started, the jump at the seam adds bright, sawtooth-like buzz — part of that day's character.
+- **Body (TONE section, default 50%)** lifts the fundamental when a day's curve concentrates energy in a higher harmonic (e.g. two big meal spikes ≈ 2nd harmonic). Without it such days can sound an octave or fifth off the key played; turn Body to 0 to hear the raw spectrum.
+
+Oscillator tuning, pan and the filter are manual controls; Randomize does not change them yet.
+
+---
+
 ## Glucose Metrics
 
 The following metrics are calculated from your daily glucose data:
@@ -186,7 +199,9 @@ The glucose-to-sound mapping is implemented in:
 
 - `src/synthesis/effects-config.ts` — Metric calculations and normalization
 - `src/synthesis/effects-chain.ts` — Effect selection and parameter mapping
-- `src/synthesis/synth-engine.ts` — Envelope application
+- `src/synthesis/wavetable.ts` — Glucose curve → wavetable → harmonics (magnitude + phase), Body
+- `src/synthesis/synth-engine.ts` — Envelope, filter and tuning application
+- `src/synthesis/wavetable-voice.ts` — Per-voice oscillator, filter and envelopes
 
 See [Components](components.md) for more technical details.
 
